@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question
+    url: https://github.com/jaARke/pipeapi/discussions/categories/q-a
+    about: Ask how to use pipeapi, or get help with a problem that may not be a bug.
+  - name: Security vulnerability
+    url: https://github.com/jaARke/pipeapi/security/advisories/new
+    about: Report a vulnerability privately, never in a public issue.

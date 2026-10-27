@@ -1,0 +1,29 @@
+name: Bug
+description: Something in a pipeapi package doesn't work the way it should.
+type: Bug
+body:
+  - type: textarea
+    id: what-happens
+    attributes:
+      label: What happens
+      description: What you did, and what went wrong. Include a minimal reproduction and the error output.
+    validations:
+      required: true
+  - type: textarea
+    id: what-should-happen
+    attributes:
+      label: What should happen
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: The pipeapi packages and their versions, the OS and its version, the transport (named pipe, Unix socket or loopback), and the language runtime and its version.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: The cause or a fix, if you know it.
