@@ -1,0 +1,28 @@
+name: Task
+description: Work that isn't a user-facing feature, such as a specification, CI, tooling, documentation or a release.
+type: Task
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What's missing or awkward, and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What you'd do, in a few sentences or bullets.
+    validations:
+      required: true
+  - type: textarea
+    id: open-questions
+    attributes:
+      label: Open questions
+      description: Decisions still to make, one checkbox each (`- [ ] ...`). Each is ticked when its answer is in the Proposal.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Tradeoffs, risks and links.
