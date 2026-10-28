@@ -1,8 +1,5 @@
 import "../settings.just"
 
-# Keep this version equal to the lychee hooks' in .pre-commit-config.yaml.
-lychee := "uvx --from lychee-bin@0.24.2 lychee --no-progress --include-fragments"
-
 # The validator in astro.config.mjs checks the links pages write, while the header, sidebar and
 # components put theirs only in the built HTML, so lychee checks that too. The remap and the
 # exclusion hold siteUrl from astro.config.mjs: links start with its path, which maps onto dist/,

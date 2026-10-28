@@ -7,13 +7,18 @@ repos:
         # make results differ by machine; run steps call named commands, so little is lost.
         args: [-shellcheck=, -pyflakes=]
 
-  - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: c92afdf2c6ca336aaa8f39e2bd8d48f62dbd8e1f # frozen: v1.31.1
+  # zizmor and lychee publish no Windows on Arm build, and a hook environment there can't install
+  # their x64 ones, so their hooks run them through just, which installs the build each OS runs.
+  - repo: local
     hooks:
+      # zizmor's own hook definition, with just as the entry.
       - id: zizmor
-        # zizmor runs online audits whenever GH_TOKEN or GITHUB_TOKEN is set, which would
-        # make results differ by shell; Dependabot's security updates cover vulnerable actions.
-        args: [--no-progress, --offline]
+        name: zizmor
+        entry: just zizmor
+        language: system
+        types: [yaml]
+        files: (^|/)(\.github/(workflows/[^/]+|dependabot)\.ya?ml|action\.ya?ml|\.pre-commit-(config|hooks)\.ya?ml)$
+        require_serial: true
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
     rev: 0494aa7fa1314e98913a41227d8f0a515b2c1049 # frozen: 0.38.2
@@ -51,15 +56,13 @@ repos:
       - &lychee
         id: lychee
         name: lychee (offline)
-        entry: lychee --no-progress --include-fragments --offline
-        language: python
-        # Dependabot doesn't update local hooks; keep this equal to lychee's version in docs/justfile.
-        additional_dependencies: [lychee-bin==0.24.2]
+        entry: just lychee --offline
+        language: system
         types: [markdown]
         exclude: ^docs/src/
       # External links too, which just external-links checks on a schedule rather than on every change.
       - <<: *lychee
         id: lychee-online
         name: lychee (online)
-        entry: lychee --no-progress --include-fragments
+        entry: just lychee
         stages: [manual]

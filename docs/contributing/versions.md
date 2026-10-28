@@ -7,7 +7,7 @@ Every tool and toolchain that the checks use runs at a pinned version, so a chec
 | Pins | Where | Ecosystem |
 | --- | --- | --- |
 | GitHub Actions, such as `actions/cache` | Each `uses:` in `.github/workflows/` | `github-actions` |
-| Remote pre-commit hooks, such as actionlint, zizmor, check-jsonschema and vacuum | Each `rev` in `.pre-commit-config.yaml`, and those hooks' `additional_dependencies` | `pre-commit` |
+| Remote pre-commit hooks, such as actionlint, check-jsonschema and vacuum | Each `rev` in `.pre-commit-config.yaml`, and those hooks' `additional_dependencies` | `pre-commit` |
 | The site's packages, its development dependencies included | `docs/package.json` and `docs/package-lock.json` | `npm` |
 | The conformance project's packages | `conformance/pyproject.toml` and `conformance/uv.lock` | `uv` |
 
@@ -23,7 +23,8 @@ Dependabot moves no toolchain. It reads no justfile, changes no action's inputs,
 | --- | --- | --- |
 | just | `minimum-version` in `settings.just` | Every `just-version` in `.github/workflows/`, so CI runs the stated minimum; "1.56 or later" in CONTRIBUTING.md's prerequisites |
 | prek | `prek` in the root `justfile` | `prek==0.5.5` in CONTRIBUTING.md's setup steps |
-| lychee | The lychee hooks' `additional_dependencies` in `.pre-commit-config.yaml` | `lychee` in `docs/justfile` |
+| lychee | `lychee` in `settings.just` | |
+| zizmor | `zizmor` in the root `justfile` | |
 | Go, which prek builds the vacuum hook with | The vacuum hook's `language_version` in `.pre-commit-config.yaml` | |
 | form-data under httpsnippet | The `overrides` entry for `httpsnippet` in `docs/package.json` | |
 | Node, and the npm it ships with | `docs/.node-version`, which CI's Node setup reads | |
