@@ -9,8 +9,12 @@ lychee := "uvx --from lychee-bin@0.24.2 lychee --no-progress --include-fragments
 # and the site's own pages are checked there rather than online.
 built-site := "--no-ignore --index-files index.html --root-dir '" + module_directory() + "' --remap '^(file:///.*/docs)/pipeapi(/.*)?$ $1/dist$2' --exclude '^https://jaarke\\.github\\.io/pipeapi/' -- dist"
 
+# List the available commands.
+default:
+    @just --list
+
 # Check the site: formatting, lint, types, frontmatter, a build with no warning from Astro's logger, and internal links.
-check: clean-install
+check: locked-install
     npm run lint:format
     npm run lint:code
     npm run build
@@ -26,14 +30,17 @@ dev: install
     npm run dev
 
 # Check the links in the built site online, external ones included.
-external-links: clean-install
+external-links: locked-install
     npm run build
     {{ lychee }} {{ built-site }}
 
-# Install exactly what package-lock.json records into an empty node_modules, as CI does.
+# Fail when package-lock.json lacks what package.json needs, then install exactly what it records.
+# npm ci would empty node_modules first, which fails on Windows while an editor has Astro loaded.
+# A dry run still runs the root's scripts unless told not to; the install reads the lock, never writes it.
 [private]
-clean-install:
-    npm ci
+locked-install:
+    npm ci --dry-run --ignore-scripts
+    npm install --package-lock --no-save
 
 # Install what package-lock.json records, leaving node_modules alone when it already matches.
 [private]

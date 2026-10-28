@@ -40,14 +40,14 @@ When a contract file fails [the checks](#checks), the error names only the file:
 
 `just docs::check` runs, in order:
 
-1. `npm ci`, which installs exactly what `docs/package-lock.json` records into an empty `node_modules`, as CI does;
+1. `npm ci --dry-run`, which fails when `docs/package-lock.json` lacks a package `docs/package.json` needs or locks a version it doesn't admit, then `npm install --package-lock --no-save`, which installs the packages and versions the lockfile records whatever the user's npm configuration says, and writes nothing back;
 2. Prettier's check, over `docs/` except `docs/contributing/`, which keeps the repository's Markdown conventions;
 3. `astro sync`, which loads every content collection, so invalid page frontmatter and a missing or unreadable contract file fail here, then ESLint, with typescript-eslint's strict type-checked rules;
 4. `astro check`, over the site's types, failing on warnings;
 5. the build, failing on any warning or error that Astro's logger reports, while starlight-links-validator checks the links and anchors that pages write;
 6. lychee, offline, over the built site, for the links that the header, sidebar, configuration, components and generated route pages add.
 
-Only `check` and `external-links` install from scratch. `just docs::dev` and `just docs::fix` run `npm install`, which changes nothing while `node_modules` matches the lockfile.
+`just docs::dev` and `just docs::fix` skip the dry run and run a plain `npm install`, which also updates the lockfile after a change to `package.json`. No command runs a real `npm ci`, which empties `node_modules` before it installs: Windows refuses to delete Astro's native compiler while an editor's ESLint or Prettier has it loaded, so the check would fail while the editor has the site open. An install that replaces the compiler, as an Astro update does, still succeeds then: npm moves the old copy aside and warns that it couldn't remove it. CI starts with no `node_modules`, so its install is a clean one all the same. To start clean locally, close the editor and delete `docs/node_modules`.
 
 `just lint` checks, with lychee offline, the links and anchors in every tracked Markdown file outside `docs/src/`, the contributor pages included. `just docs::external-links` and `just external-links` check the same links online, external ones included.
 

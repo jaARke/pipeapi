@@ -21,15 +21,15 @@ Dependabot moves no toolchain. It reads no justfile, changes no action's inputs,
 
 | Version | Set in | Moves with it |
 | --- | --- | --- |
-| just | `minimum-version` in `settings.just` | Every `just-version` in `.github/workflows/`, so CI runs the stated minimum; "1.56 or later" in CONTRIBUTING.md |
-| prek | `prek` in the root `justfile` | |
+| just | `minimum-version` in `settings.just` | Every `just-version` in `.github/workflows/`, so CI runs the stated minimum; "1.56 or later" in CONTRIBUTING.md's prerequisites |
+| prek | `prek` in the root `justfile` | `prek==0.5.5` in CONTRIBUTING.md's setup steps |
 | lychee | The lychee hooks' `additional_dependencies` in `.pre-commit-config.yaml` | `lychee` in `docs/justfile` |
 | Go, which prek builds the vacuum hook with | The vacuum hook's `language_version` in `.pre-commit-config.yaml` | |
 | form-data under httpsnippet | The `overrides` entry for `httpsnippet` in `docs/package.json` | |
 | Node, and the npm it ships with | `docs/.node-version`, which CI's Node setup reads | |
-| npm's minimum | `devEngines.packageManager.version` in `docs/package.json` | "npm 11.10.0 or later" in CONTRIBUTING.md |
+| npm's minimum | `devEngines.packageManager.version` in `docs/package.json` | "npm 11.10.0 or later" in CONTRIBUTING.md's prerequisites |
 | The conformance project's Python | `conformance/.python-version` | `requires-python` in `conformance/pyproject.toml`, which must admit it, so a new minor version changes both |
-| uv's minimum | `required-version` in `conformance/pyproject.toml`, which CI's conformance job reads | "uv 0.12.22 or later" in CONTRIBUTING.md |
+| uv's minimum | `required-version` in `conformance/pyproject.toml`, which CI's conformance job reads | "0.12.22 or later" for uv in CONTRIBUTING.md's prerequisites |
 | The reference app's Python floor | `per-file-target-version` in `conformance/pyproject.toml` | `reference_app_python` in `conformance/justfile` |
 | The 7-day cooldown | Each entry's `cooldown` in `.github/dependabot.yml` | `exclude-newer` in `conformance/pyproject.toml`; `min-release-age` in `docs/.npmrc` |
 

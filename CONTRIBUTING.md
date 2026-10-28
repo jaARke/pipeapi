@@ -17,16 +17,39 @@ Report a security vulnerability privately, as [SECURITY.md](SECURITY.md) describ
 
 ## Development
 
-Every check is a named command run with [just](https://just.systems/) 1.56 or later, and CI runs the same commands, so any CI step can be reproduced locally. Run `just` to list them. In VS Code, open `pipeapi.code-workspace`: each project is a folder of its own there, with its settings and recommended extensions.
+Every check is a named command run with [just](https://just.systems/), and CI runs the same commands, so any CI step can be reproduced locally. [The repository](docs/contributing/repository.md) says how the projects and their commands fit together.
 
-- `just lint` lints repository-wide files: the GitHub Actions workflows, for errors and for security issues such as template injection and excessive permissions; the links and anchors in the Markdown read on GitHub, such as this file; and the protocol's contract in `protocol/`, as its [README](protocol/README.md) describes. It needs [uv](https://docs.astral.sh/uv/), which fetches [prek](https://prek.j178.dev/) to run the hooks at the versions `.pre-commit-config.yaml` pins. prek builds the OpenAPI linter, vacuum, with a Go toolchain it downloads, so the first run takes several minutes, and later runs reuse what it built. prek checks only the files Git tracks, so a new file is checked once it's added. To run the hooks on every commit too, install prek (for example with `uv tool install prek`) and then the Git hook with `prek install`.
-- `just docs::check` checks the guide site in `docs/`, as [The guide site](docs/contributing/guide-site.md#checks) lists. It needs uv and [Node.js](https://nodejs.org/) at the version `docs/.node-version` names, with npm 11.10.0 or later, which installs the dependencies `docs/package-lock.json` records. `just docs::fix` applies ESLint's fixes and Prettier's formatting, and `just docs::dev` serves the site locally and reloads each page as you edit it.
-- `just conformance::check` checks the conformance project in `conformance/`: ruff's lint and formatting, Pyright in strict mode (the reference app also at its older Python floor), and the reference app's tests, in process and under uvicorn. It needs uv 0.12.22 or later, as `conformance/pyproject.toml`'s `required-version` states, which installs the Python `conformance/.python-version` names and the packages `conformance/uv.lock` records. `just conformance::fix` applies ruff's fixes and formatting.
-- `just external-links` and `just docs::external-links` check the same links online, external ones included: the first in the Markdown read on GitHub, the second in the site. A scheduled workflow runs both, since an external link can break without any change in the repository.
+### Prerequisites
 
-Each package is a normal project for its ecosystem in a directory of its own. Its commands live in a justfile there, which the root justfile loads as a module, so `just <package>::<recipe>` runs one from the repository root. just doesn't carry settings into modules, so each package's justfile starts with `import "../settings.just"`, which sets the minimum just version and the Windows shell.
+| Tool | Version | Needed for |
+| --- | --- | --- |
+| [Git](https://git-scm.com/) | Any recent | Cloning; the hooks check only the files Git tracks |
+| [just](https://just.systems/) | 1.56 or later | Every command |
+| [uv](https://docs.astral.sh/uv/) | 0.12.22 or later | Every check, and the `conformance` commands |
+| [Node.js](https://nodejs.org/) and npm | The Node version `docs/.node-version` names, with npm 11.10.0 or later | The `docs` commands |
 
-Dependabot opens pull requests that update the GitHub Actions, the pre-commit hooks and each project's packages, lockfiles included. It moves no toolchain, such as Node or Python, and a few other versions too: [Pinned versions](docs/contributing/versions.md) lists each version that moves by hand, with every place that moves with it.
+`just check` and `just fix` run every project's commands, so they need all of these. Every other tool the checks use, Python and Go included, runs at a version the repository pins, and the checks fetch it themselves: [Pinned versions](docs/contributing/versions.md) lists each.
+
+uv can also install just: `uv tool install rust-just`. Tools that uv installs run from its tool directory, which `uv tool update-shell` adds to PATH. A version manager that reads `.node-version`, such as [fnm](https://github.com/Schniz/fnm), installs the Node the site pins.
+
+### Set up
+
+1. Install the prerequisites.
+2. Run `just check`. The first run installs each project's dependencies and builds the hooks, the OpenAPI linter among them, which takes several minutes. Later runs reuse what it built.
+3. In VS Code, open `pipeapi.code-workspace` rather than the repository's folder, and install the recommended extensions. Each project is a folder of its own there, with its settings.
+4. To run the hooks on every commit too, install the prek `just lint` runs, with `uv tool install prek==0.5.5`, then the Git hook with `prek install`.
+
+### Commands
+
+`just` lists every command with what it does. The ones you'll use most:
+
+| Command | What it does |
+| --- | --- |
+| `just check` | Runs every check a pull request must pass |
+| `just fix` | Applies every project's fixes and formatting |
+| `just docs::dev` | Serves the guide site locally, reloading each page as you edit it |
+
+What `just lint` and each project's checks cover, and why, is on the pages in [`docs/contributing/`](docs/contributing/).
 
 ## Design
 

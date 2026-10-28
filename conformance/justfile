@@ -9,6 +9,10 @@ export PYRIGHT_PYTHON_IGNORE_WARNINGS := "1"
 # environment's version leaves typeshed's version checks at the project's Python.
 reference_app_python := "3.10"
 
+# List the available commands.
+default:
+    @just --list
+
 # Check the conformance project as a pull request must: lint, format, types and tests.
 check:
     uv run --locked ruff check

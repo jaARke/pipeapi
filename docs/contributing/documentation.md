@@ -24,8 +24,8 @@ Each fact has one owner, and every other page links to it rather than restating 
 | What a public symbol does | Its doc comment; READMEs and guide pages link the API reference |
 | How to do a task with pipeapi, and the concepts behind it | The guide site; the API reference links it for concepts |
 | A setting's value and its reason | The file that holds the setting, with the reason in a comment beside it; pages link the file rather than restating the value |
-| What a command does | Its recipe's comment in its justfile, which `just --list` shows |
-| What each check needs installed | CONTRIBUTING.md's [Development](../../CONTRIBUTING.md#development) section |
+| What a command does | Its recipe's comment in its justfile, which `just` lists; CONTRIBUTING.md's [commands](../../CONTRIBUTING.md#commands) summarize the everyday ones |
+| What each check needs installed | CONTRIBUTING.md's [prerequisites](../../CONTRIBUTING.md#prerequisites) |
 | A component's guarantees, the reasons for its design and what was rejected | The component's page in this folder |
 | Work not yet done, and open design questions | The [issues](https://github.com/jaARke/pipeapi/issues) |
 
