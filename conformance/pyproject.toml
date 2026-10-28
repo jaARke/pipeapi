@@ -27,9 +27,9 @@ dev = [
 
 [tool.uv]
 # The oldest uv that keeps this lock's relative exclude-newer fixed (0.11.8) and can
-# download the CPython .python-version pins (0.12.22), not the newest, so that
+# download the CPython .python-version pins (0.13.5), not the newest, so that
 # Dependabot's uv, which lags the newest, can run. CI's conformance job runs this floor.
-required-version = ">=0.12.22"
+required-version = ">=0.13.5"
 # The cooldown the uv entry in .github/dependabot.yml keeps, which names this setting,
 # so no update proposes a version uv refuses.
 exclude-newer = "7 days"

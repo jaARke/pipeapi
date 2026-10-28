@@ -25,7 +25,7 @@ Every check is a named command run with [just](https://just.systems/), and CI ru
 | --- | --- | --- |
 | [Git](https://git-scm.com/) | Any recent | Cloning; the hooks check only the files Git tracks |
 | [just](https://just.systems/) | 1.56 or later | Every command |
-| [uv](https://docs.astral.sh/uv/) | 0.12.22 or later | Every check, and the `conformance` commands |
+| [uv](https://docs.astral.sh/uv/) | 0.13.5 or later | Every check, and the `conformance` commands |
 | [Node.js](https://nodejs.org/) and npm | The Node version `docs/.node-version` names, with npm 11.10.0 or later | The `docs` commands |
 
 `just check` and `just fix` run every project's commands, so they need all of these. Every other tool the checks use, Python and Go included, runs at a version the repository pins, and the checks fetch it themselves: [Pinned versions](docs/contributing/versions.md) lists each.

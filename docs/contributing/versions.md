@@ -29,7 +29,7 @@ Dependabot moves no toolchain. It reads no justfile, changes no action's inputs,
 | Node, and the npm it ships with | `docs/.node-version`, which CI's Node setup reads | |
 | npm's minimum | `devEngines.packageManager.version` in `docs/package.json` | "npm 11.10.0 or later" in CONTRIBUTING.md's prerequisites |
 | The conformance project's Python | `conformance/.python-version` | `requires-python` in `conformance/pyproject.toml`, which must admit it, so a new minor version changes both |
-| uv's minimum | `required-version` in `conformance/pyproject.toml`, which CI's conformance job reads | "0.12.22 or later" for uv in CONTRIBUTING.md's prerequisites |
+| uv's minimum | `required-version` in `conformance/pyproject.toml`, which CI's conformance job reads | "0.13.5 or later" for uv in CONTRIBUTING.md's prerequisites |
 | The reference app's Python floor | `per-file-target-version` in `conformance/pyproject.toml` | `reference_app_python` in `conformance/justfile` |
 | The 7-day cooldown | Each entry's `cooldown` in `.github/dependabot.yml` | `exclude-newer` in `conformance/pyproject.toml`; `min-release-age` in `docs/.npmrc` |
 
