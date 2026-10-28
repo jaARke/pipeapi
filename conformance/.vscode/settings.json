@@ -1,0 +1,22 @@
+{
+	// The environment uv creates from uv.lock, so Pylance, ruff, pytest and the debugger
+	// use the versions it pins; Pylance takes strict mode from pyproject.toml's pyright table
+	"python-envs.workspaceSearchPaths": [".venv"],
+	// The extension's own unset value, so an interpreter in a user's settings never
+	// outranks the environment found above
+	"python.defaultInterpreterPath": "python",
+	// pytest, from this folder and with no arguments of its own, as `just conformance::check`
+	// runs it, so pyproject.toml's pytest table decides what is collected
+	"python.testing.pytestEnabled": true,
+	"python.testing.unittestEnabled": false,
+	// ruff formats on save and applies the fixes and import order the check runs, and no
+	// other extension acts on save
+	"[python]": {
+		"editor.defaultFormatter": "charliermarsh.ruff",
+		"editor.formatOnSave": true,
+		"editor.codeActionsOnSave": {
+			"source.fixAll.ruff": "explicit",
+			"source.organizeImports.ruff": "explicit"
+		}
+	}
+}

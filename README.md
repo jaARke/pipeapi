@@ -6,7 +6,7 @@ pipeapi is in early development and has no releases yet. The [issues](https://gi
 
 ## Contributing
 
-Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to report bugs, propose changes and open pull requests, and [SECURITY.md](SECURITY.md) how to report a vulnerability privately.
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to set up for development, report bugs, propose changes and open pull requests, and [SECURITY.md](SECURITY.md) how to report a vulnerability privately.
 
 ## License
 

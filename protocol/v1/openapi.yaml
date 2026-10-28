@@ -1,0 +1,83 @@
+openapi: 3.2.0
+info:
+  title: pipeapi protocol
+  version: '1'
+  summary: The routes pipeapi reserves on every backend, in protocol version 1.
+  description: The middleware of every pipeapi backend answers these routes itself, before the app sees a request. The protocol v1 page of the guide site states the rules that govern them.
+  contact:
+    name: pipeapi
+    url: https://github.com/jaARke/pipeapi
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  # Never resolved: connectors send every request down the endpoint's transport with this Host.
+  - url: http://pipeapi.localhost
+    description: Any pipeapi endpoint.
+tags:
+  - name: reserved
+    summary: Reserved routes
+    description: The routes under /__pipeapi/, which every pipeapi backend serves.
+paths:
+  /__pipeapi/ready:
+    get:
+      operationId: hello
+      summary: Hello
+      description: Answers without credentials, so a client can verify the server before it enrolls.
+      tags: [reserved]
+      parameters:
+        - $ref: '#/components/parameters/nonce'
+      responses:
+        '200':
+          description: The server's hello.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/hello'
+  /__pipeapi/lease:
+    get:
+      operationId: lease
+      summary: Lease
+      description: Enrolls the client and holds its lease. The backend runs while at least one lease is open.
+      tags: [reserved]
+      parameters:
+        - $ref: '#/components/parameters/protocol'
+      responses:
+        '200':
+          description: Held open while the lease lasts. The lease ends when the connection closes.
+        '401':
+          description: Enrollment failed.
+  /__pipeapi/shutdown:
+    post:
+      operationId: shutdown
+      summary: Shutdown
+      description: Stops the backend now, whatever leases are open.
+      tags: [reserved]
+      parameters:
+        - $ref: '#/components/parameters/protocol'
+      responses:
+        '202':
+          description: The backend is stopping.
+        '401':
+          description: The request carried no session of an open lease.
+components:
+  parameters:
+    nonce:
+      name: X-PipeAPI-Nonce
+      in: header
+      description: A fresh nonce, which the hello's proof covers.
+      required: true
+      schema:
+        type: string
+    protocol:
+      name: X-PipeAPI-Protocol
+      in: header
+      description: The negotiated protocol version, sent on every request after the hello.
+      required: true
+      schema:
+        type: integer
+        const: 1
+  schemas:
+    hello:
+      description: The server's hello, which a client checks before it enrolls.
+      type: object

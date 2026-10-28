@@ -1,0 +1,26 @@
+{
+	// Prettier formats on save and ESLint applies its fixes, as `just docs::fix` does
+	"editor.formatOnSave": true,
+	"editor.codeActionsOnSave": {
+		"source.fixAll.eslint": "explicit",
+		// ESLint orders imports, so TypeScript's organizer stays off even where a user's settings turn it on
+		"source.organizeImports": "never"
+	},
+	// Prettier's extension formats with the site's Prettier and the plugins package.json declares,
+	// as the check does, rather than a formatter another extension bundles
+	"[astro][javascript][typescript][json][jsonc][markdown][mdx][css][yaml]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	// Indent with tabs, as Prettier does, except where it writes spaces: Markdown lists, aligned to
+	// their marker, and YAML, which forbids tabs
+	"editor.insertSpaces": false,
+	"[markdown][mdx][yaml]": {
+		"editor.insertSpaces": true,
+		"editor.tabSize": 2
+	},
+	// TypeScript: use the site's compiler, so the editor reports what `astro check` does. These are
+	// window settings, which VS Code applies from here only when docs/ is opened on its own;
+	// pipeapi.code-workspace sets them for the workspace
+	"js/ts.tsdk.path": "node_modules/typescript/lib",
+	"js/ts.tsdk.promptToUseWorkspaceVersion": true
+}

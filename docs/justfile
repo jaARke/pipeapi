@@ -1,0 +1,45 @@
+import "../settings.just"
+
+# The validator in astro.config.mjs checks the links pages write, while the header, sidebar and
+# components put theirs only in the built HTML, so lychee checks that too. The remap and the
+# exclusion hold siteUrl from astro.config.mjs: links start with its path, which maps onto dist/,
+# and the site's own pages are checked there rather than online.
+built-site := "--no-ignore --index-files index.html --root-dir '" + module_directory() + "' --remap '^(file:///.*/docs)/pipeapi(/.*)?$ $1/dist$2' --exclude '^https://jaarke\\.github\\.io/pipeapi/' -- dist"
+
+# List the available commands.
+default:
+    @just --list
+
+# Check the site: formatting, lint, types, frontmatter, a build with no warning from Astro's logger, and internal links.
+check: locked-install
+    npm run lint:format
+    npm run lint:code
+    npm run build
+    {{ lychee }} --offline {{ built-site }}
+
+# Apply ESLint's fixes and Prettier's formatting.
+fix: install
+    npm run fix:code
+    npm run format
+
+# Serve the site locally, reloading pages as their sources change.
+dev: install
+    npm run dev
+
+# Check the links in the built site online, external ones included.
+external-links: locked-install
+    npm run build
+    {{ lychee }} {{ built-site }}
+
+# Fail when package-lock.json lacks what package.json needs, then install exactly what it records.
+# npm ci would empty node_modules first, which fails on Windows while an editor has Astro loaded.
+# A dry run still runs the root's scripts unless told not to; the install reads the lock, never writes it.
+[private]
+locked-install:
+    npm ci --dry-run --ignore-scripts
+    npm install --package-lock --no-save
+
+# Install what package-lock.json records, leaving node_modules alone when it already matches.
+[private]
+install:
+    npm install

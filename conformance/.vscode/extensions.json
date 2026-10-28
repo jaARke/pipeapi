@@ -1,0 +1,11 @@
+{
+	"recommendations": [
+		// Python, whose pack brings Pylance, the debugger and Python Environments, which
+		// finds the folder's .venv
+		"ms-python.python",
+		// Lints and formats as the check's ruff does
+		"charliermarsh.ruff",
+		// Validates pyproject.toml against its published schema
+		"tamasfe.even-better-toml"
+	]
+}

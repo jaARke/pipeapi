@@ -1,0 +1,48 @@
+{
+	"name": "pipeapi-docs",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro check --minimumFailingSeverity warning && astro build",
+		"preview": "astro preview",
+		"astro": "astro",
+		"lint:code": "astro sync && eslint --max-warnings 0 .",
+		"lint:format": "prettier --check .",
+		"fix:code": "astro sync && eslint --fix .",
+		"format": "prettier --write ."
+	},
+	"dependencies": {
+		"@astrojs/check": "0.9.11",
+		"@astrojs/starlight": "0.42.6",
+		"astro": "7.4.1",
+		"json-schema-to-typescript": "16.0.0",
+		"starlight-links-validator": "0.27.0",
+		"starlight-openapi": "0.27.0",
+		"typescript": "6.0.3",
+		"yaml": "2.9.1"
+	},
+	"devDependencies": {
+		"@eslint/js": "10.0.1",
+		"eslint": "10.13.0",
+		"eslint-plugin-astro": "3.2.1",
+		"eslint-plugin-n": "18.5.0",
+		"eslint-plugin-perfectionist": "5.13.0",
+		"globals": "17.13.0",
+		"prettier": "3.9.10",
+		"prettier-plugin-astro": "1.1.1",
+		"typescript-eslint": "8.72.0"
+	},
+	"overrides": {
+		"httpsnippet": {
+			"form-data": "4.0.6"
+		}
+	},
+	"devEngines": {
+		"packageManager": {
+			"name": "npm",
+			"version": ">=11.10.0",
+			"onFail": "error"
+		}
+	}
+}

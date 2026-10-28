@@ -33,16 +33,87 @@ jobs:
           enable-cache: false
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
-          # The oldest just that settings.just allows, so CI proves the stated minimum.
+          # settings.just's minimum-version, so CI proves the stated minimum.
           just-version: 1.56.0
+      # prek builds vacuum's golang hook with a Go toolchain it downloads, which takes minutes. The
+      # key covers what the store depends on: the platform, prek's version (in the root justfile)
+      # and the hooks' revisions; no fallback key, so a changed config starts from an empty store.
+      # The path is the Lint step's PREK_HOME, since a job's env can't read the runner context.
+      - name: Cache prek's hook environments
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/prek
+          key: prek-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('justfile', '.pre-commit-config.yaml') }}
       - name: Lint
         run: just lint
+        env:
+          PREK_HOME: ${{ runner.temp }}/prek
+
+  docs:
+    name: Docs (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          # settings.just's minimum-version, so CI proves the stated minimum.
+          just-version: 1.56.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: docs/.node-version
+      - name: Check the docs
+        run: just docs::check
+      # The pull request's preview of the site.
+      - name: Upload the built site
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site
+          path: docs/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  conformance:
+    name: Conformance (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+          # The oldest uv that conformance/pyproject.toml's required-version allows, so CI
+          # proves the stated minimum.
+          version-file: conformance/pyproject.toml
+          resolution-strategy: lowest
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          # settings.just's minimum-version, so CI proves the stated minimum.
+          just-version: 1.56.0
+      - name: Check the conformance project
+        run: just conformance::check
 
   # The main ruleset requires only this check, so adding a job means adding it to needs.
   ci-passed:
     name: CI passed
     if: always()
-    needs: [repository]
+    needs: [repository, docs, conformance]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

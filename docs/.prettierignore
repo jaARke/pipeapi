@@ -1,0 +1,4 @@
+# npm writes it
+package-lock.json
+# Markdown read on GitHub, which keeps the repository's Markdown conventions rather than the site's
+contributing/

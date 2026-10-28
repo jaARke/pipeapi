@@ -1,8 +1,10 @@
-# VS Code: share the project's settings, keep everything else in .vscode local
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
+# VS Code, in the root and in every project's folder: share the settings, keep everything else in
+# .vscode local, and keep the shared files and the workspace even where a global rule ignores them
+!**/.vscode/
+**/.vscode/*
+!**/.vscode/settings.json
+!**/.vscode/tasks.json
+!**/.vscode/launch.json
+!**/.vscode/extensions.json
+!**/.vscode/*.code-snippets
 !*.code-workspace

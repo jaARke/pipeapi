@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=registry.schema.json
+# The pre-commit hook check-jsonschema validates this file against the same schema.
+
+environment_variables:
+  PIPEAPI_ENDPOINT:
+    description: The endpoint URL, passed to a spawned backend in its environment.
+  PIPEAPI_TOKEN:
+    description: The token, passed to a spawned backend in its environment. It is 32 random bytes encoded as base64url, or a token the user gives.
+  PIPEAPI_RENDEZVOUS:
+    description: The path of the rendezvous file, where the server writes the port it bound. It is set only on loopback with a generated port.
+
+constants:
+  host:
+    value: pipeapi.localhost
+    description: The value of the Host header on every request. It is never resolved.

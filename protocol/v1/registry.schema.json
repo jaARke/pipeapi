@@ -1,0 +1,50 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Registry",
+	"description": "The names and values protocol v1 uses that openapi.yaml can't hold. Each section maps a name to its entry.",
+	"type": "object",
+	"properties": {
+		"environment_variables": {
+			"description": "The environment variables a spawned backend receives.",
+			"type": "object",
+			"propertyNames": { "pattern": "^PIPEAPI_[A-Z][A-Z0-9_]*$" },
+			"additionalProperties": { "$ref": "#/$defs/environment_variable" }
+		},
+		"constants": {
+			"description": "Values fixed by the protocol.",
+			"type": "object",
+			"propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+			"additionalProperties": { "$ref": "#/$defs/constant" }
+		}
+	},
+	"required": ["environment_variables", "constants"],
+	"additionalProperties": false,
+	"$defs": {
+		"description": {
+			"description": "One or two sentences of plain text on what the entry is. The spec states the rules that apply to it.",
+			"type": "string",
+			"minLength": 1
+		},
+		"environment_variable": {
+			"type": "object",
+			"properties": {
+				"description": { "$ref": "#/$defs/description" }
+			},
+			"required": ["description"],
+			"additionalProperties": false
+		},
+		"constant": {
+			"type": "object",
+			"properties": {
+				"value": {
+					"description": "The exact value.",
+					"type": "string",
+					"minLength": 1
+				},
+				"description": { "$ref": "#/$defs/description" }
+			},
+			"required": ["value", "description"],
+			"additionalProperties": false
+		}
+	}
+}

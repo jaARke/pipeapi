@@ -7,12 +7,62 @@ repos:
         # make results differ by machine; run steps call named commands, so little is lost.
         args: [-shellcheck=, -pyflakes=]
 
+  # zizmor and lychee publish no Windows on Arm build, and a hook environment there can't install
+  # their x64 ones, so their hooks run them through just, which installs the build each OS runs.
+  - repo: local
+    hooks:
+      # zizmor's own hook definition, with just as the entry.
+      - id: zizmor
+        name: zizmor
+        entry: just zizmor
+        language: system
+        types: [yaml]
+        files: (^|/)(\.github/(workflows/[^/]+|dependabot)\.ya?ml|action\.ya?ml|\.pre-commit-(config|hooks)\.ya?ml)$
+        require_serial: true
+
   - repo: https://github.com/python-jsonschema/check-jsonschema
     rev: 0494aa7fa1314e98913a41227d8f0a515b2c1049 # frozen: 0.38.2
     hooks:
       - id: check-dependabot
+      # registry.yaml's modeline names the same schema for editors.
+      - id: check-jsonschema
+        name: Validate protocol v1's registry against its schema
+        files: ^protocol/v1/registry\.yaml$
+        args: [--schemafile, protocol/v1/registry.schema.json]
+      - id: check-metaschema
+        name: Validate the protocol's schemas against their metaschemas
+        files: ^protocol/.+\.schema\.json$
+
+  - repo: https://github.com/daveshanley/vacuum
+    rev: 424f9daf7ebfab015a24e24e12bf269f9adeb586 # frozen: v0.33.2
+    hooks:
+      - id: vacuum
+        files: ^protocol/v\d+/openapi\.yaml$
+        # The Go toolchain prek builds the hook with. Dependabot doesn't update it, so it moves by hand.
+        language_version: 1.27.3
+        # Every finding fails, examples that violate their schema included, which vacuum reports
+        # as warnings.
+        args: [--details, --fail-severity, warn, --ruleset, protocol/vacuum-ruleset.yaml]
 
   - repo: https://github.com/editorconfig-checker/editorconfig-checker
     rev: 0adfdb012938ada0cf563a40f2fceaf9466290ca # frozen: v4.0.2
     hooks:
       - id: editorconfig-checker
+
+  # lychee's own hook runs through bash and installs cargo-binstall with an unpinned script.
+  - repo: local
+    hooks:
+      # Links and anchors in the Markdown read on GitHub; the docs check covers the site's pages.
+      - &lychee
+        id: lychee
+        name: lychee (offline)
+        entry: just lychee --offline
+        language: system
+        types: [markdown]
+        exclude: ^docs/src/
+      # External links too, which just external-links checks on a schedule rather than on every change.
+      - <<: *lychee
+        id: lychee-online
+        name: lychee (online)
+        entry: just lychee
+        stages: [manual]

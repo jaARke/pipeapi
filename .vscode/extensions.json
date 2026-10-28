@@ -2,6 +2,9 @@
 	"recommendations": [
 		"EditorConfig.EditorConfig",
 		"github.vscode-github-actions",
-		"nefrob.vscode-just-syntax"
+		"nefrob.vscode-just-syntax",
+		// Validates protocol/: each registry against the schema its modeline names, and each
+		// openapi.yaml against the OpenAPI schema SchemaStore associates with that name
+		"redhat.vscode-yaml"
 	]
 }

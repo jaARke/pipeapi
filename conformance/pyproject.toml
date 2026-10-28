@@ -1,0 +1,147 @@
+[project]
+name = "pipeapi-conformance"
+version = "0.0.0"
+description = "pipeapi's conformance suite and the reference app it runs against."
+# The one Python .python-version pins, since nothing here is published. The reference
+# app alone is held to an older one, below.
+requires-python = "==3.14.*"
+dependencies = [
+    "fastapi>=0.156.4",
+    # FastAPI's form parsing, which the reference app's form route needs.
+    "python-multipart>=0.0.32",
+    # Serves the reference app, as the suite's baseline runs it.
+    "uvicorn>=0.54.0",
+    # uvicorn's WebSocket protocol, and the tests' WebSocket client.
+    "websockets>=17.3",
+]
+
+[dependency-groups]
+dev = [
+    # Starlette's test client, and the tests' client of the app under uvicorn.
+    "httpx2>=2.15.1",
+    # The nodejs extra locks the Node runtime the wrapper runs pyright's bundled engine on.
+    "pyright[nodejs]>=1.1.414",
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+]
+
+[tool.uv]
+# The oldest uv that keeps this lock's relative exclude-newer fixed (0.11.8) and can
+# download the CPython .python-version pins (0.13.5), not the newest, so that
+# Dependabot's uv, which lags the newest, can run. CI's conformance job runs this floor.
+required-version = ">=0.13.5"
+# The cooldown the uv entry in .github/dependabot.yml keeps, which names this setting,
+# so no update proposes a version uv refuses.
+exclude-newer = "7 days"
+
+[tool.ruff]
+# The reference app is served in the pipeapi server's oldest supported environment, so
+# it is held to that Python, which the justfile's reference_app_python holds for pyright;
+# everything else runs on the pinned one.
+per-file-target-version = { "reference_app/**/*.py" = "py310" }
+
+[tool.ruff.lint]
+# The DOC rules, which check a docstring's Returns, Yields and Raises sections, are
+# preview rules, and a preview rule runs only when selected by its full code. Preview
+# also gives stable rules their preview behavior.
+preview = true
+explicit-preview-rules = true
+# RUF100 rejects a noqa marker that suppresses nothing, so no marker outlives what it
+# excuses.
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "C4",
+    "UP",
+    "ARG",
+    "T20",
+    "TID251",
+    "RUF100",
+    "ASYNC",
+    "BLE",
+    "D",
+    "D213",
+    # Not DOC502, which reports a Raises entry the function itself does not raise: Raises
+    # names each exception a caller may see, raised through a call too.
+    "DOC102",
+    "DOC201",
+    "DOC202",
+    "DOC402",
+    "DOC403",
+    "DOC501",
+    "FBT001",
+    "FBT002",
+    "G",
+    "INP",
+    "LOG",
+    "N",
+    "PGH",
+    "PT",
+    "PTH",
+    "SIM115",
+]
+ignore = [
+    # Modules need not carry a docstring.
+    "D100",
+    "D104",
+    # A dunder does what its protocol says, and a class's docstring covers its constructor.
+    "D105",
+    "D107",
+    # A summary may run to a second line, and it starts on the docstring's second line (D213).
+    "D205",
+    "D212",
+    # An exception named for the failure it reports, such as StartupFailure, needs no
+    # Error suffix.
+    "N818",
+    # pytest's assertion rewriting reports each operand of a composite assertion.
+    "PT018",
+]
+
+# Banned in every file, the tests included, so only reference_app/environment.py reads
+# the environment.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.environ".msg = "Read the environment in reference_app/environment.py."
+"os.environb".msg = "Read the environment in reference_app/environment.py."
+"os.getenv".msg = "Read the environment in reference_app/environment.py."
+"os.getenvb".msg = "Read the environment in reference_app/environment.py."
+
+# Docstrings in Google's form, with Args, Returns, Yields and Raises sections.
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# The one reader of the environment.
+"reference_app/environment.py" = ["TID251"]
+# pytest imports each test by its path, so tests/ holds no __init__.py. A test's name is
+# its documentation, and the docstrings in tests/, its support's included, need no
+# sections.
+"tests/**/*.py" = ["D1", "DOC", "INP001"]
+
+[tool.pyright]
+# The project's environment, whatever Python is first on PATH.
+venvPath = "."
+venv = ".venv"
+# Every value has a known type, including what comes from dependencies.
+typeCheckingMode = "strict"
+# An override that stops overriding fails, and @override exempts it from D102 and FBT.
+reportImplicitOverride = "error"
+# The type checker's twin of RUF100: a suppression that suppresses nothing fails.
+reportUnnecessaryTypeIgnoreComment = "error"
+# An import cycle fails, so the modules keep one direction.
+reportImportCycles = "error"
+
+[tool.pytest]
+# The tests, and the examples in the reference app's docstrings, as doctests.
+testpaths = ["tests", "reference_app"]
+# So the tests import reference_app and their support by name.
+pythonpath = ["."]
+# Test modules imported by path, without changing sys.path, as pytest advises for new
+# projects; and the docstrings' examples run.
+addopts = ["--import-mode=importlib", "--doctest-modules"]
+# An unknown setting or marker, or an xfail that passes, fails the run.
+strict = true
+# A warning, such as a dependency's deprecation, fails the test that raised it.
+filterwarnings = ["error"]
