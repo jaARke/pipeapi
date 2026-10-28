@@ -30,7 +30,7 @@ Every check is a named command run with [just](https://just.systems/), and CI ru
 
 `just check` and `just fix` run every project's commands, so they need all of these. Every other tool the checks use, Python and Go included, runs at a version the repository pins, and the checks fetch it themselves: [Pinned versions](docs/contributing/versions.md) lists each.
 
-uv can also install just: `uv tool install rust-just`. Tools that uv installs run from its tool directory, which `uv tool update-shell` adds to PATH. A version manager that reads `.node-version`, such as [fnm](https://github.com/Schniz/fnm), installs the Node the site pins.
+uv can also install just: `uv tool install rust-just`. On Windows on Arm, that package has no build, so use `winget install --id Casey.Just`. Tools that uv installs run from its tool directory, which `uv tool update-shell` adds to PATH. A version manager that reads `.node-version`, such as [fnm](https://github.com/Schniz/fnm), installs the Node the site pins.
 
 ### Set up
 
