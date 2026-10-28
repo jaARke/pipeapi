@@ -1,0 +1,265 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Test vectors",
+	"description": "One file of protocol v1's test vectors: the cases of one kind, each an input and the result the rules give it.",
+	"type": "object",
+	"properties": {
+		"$schema": {
+			"description": "This schema's path from the file, for editors.",
+			"const": "vectors.schema.json"
+		},
+		"kind": {
+			"description": "What the file's cases test, which sets the fields each case has.",
+			"enum": ["hello_proof", "enrollment_proof", "template_expansion"]
+		},
+		"description": {
+			"description": "One or two sentences of plain text on what the file covers.",
+			"type": "string",
+			"minLength": 1
+		},
+		"notes": {
+			"description": "Each flag a case may carry, mapped to a sentence on what it marks. Every flag a case carries is a key here, and every key flags some case.",
+			"type": "object",
+			"propertyNames": { "$ref": "#/$defs/flag" },
+			"additionalProperties": { "type": "string", "minLength": 1 }
+		},
+		"tests": {
+			"description": "The cases, whose tcIds count up from 1.",
+			"type": "array",
+			"minItems": 1
+		}
+	},
+	"required": ["$schema", "kind", "description", "notes", "tests"],
+	"additionalProperties": false,
+	"allOf": [
+		{
+			"if": { "properties": { "kind": { "const": "hello_proof" } }, "required": ["kind"] },
+			"then": { "properties": { "tests": { "items": { "$ref": "#/$defs/hello_proof_case" } } } }
+		},
+		{
+			"if": { "properties": { "kind": { "const": "enrollment_proof" } }, "required": ["kind"] },
+			"then": { "properties": { "tests": { "items": { "$ref": "#/$defs/enrollment_proof_case" } } } }
+		},
+		{
+			"if": { "properties": { "kind": { "const": "template_expansion" } }, "required": ["kind"] },
+			"then": { "properties": { "tests": { "items": { "$ref": "#/$defs/template_expansion_case" } } } }
+		}
+	],
+	"$defs": {
+		"flag": {
+			"description": "A flag's name, in UpperCamelCase.",
+			"type": "string",
+			"pattern": "^[A-Z][A-Za-z0-9]*$"
+		},
+		"base64url_32": {
+			"description": "32 bytes as base64url without padding, in canonical form: 43 characters, the last of which leaves its two unused bits zero.",
+			"type": "string",
+			"pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+		},
+		"uint32": {
+			"description": "An unsigned 32-bit integer.",
+			"type": "integer",
+			"minimum": 0,
+			"maximum": 4294967295
+		},
+		"token": {
+			"description": "The token's text, whose UTF-8 bytes are the HMAC key.",
+			"type": "string",
+			"minLength": 1
+		},
+		"case": {
+			"description": "The fields every case has, whatever its kind.",
+			"type": "object",
+			"properties": {
+				"tcId": {
+					"description": "The case's number in its file.",
+					"type": "integer",
+					"minimum": 1
+				},
+				"comment": {
+					"description": "A short sentence on what the case tests.",
+					"type": "string",
+					"minLength": 1
+				},
+				"flags": {
+					"description": "The notes that describe the case, by name.",
+					"type": "array",
+					"items": { "$ref": "#/$defs/flag" },
+					"uniqueItems": true
+				},
+				"result": {
+					"description": "Whether the rules accept the case's input.",
+					"enum": ["valid", "invalid"]
+				}
+			},
+			"required": ["tcId", "comment", "flags", "result"]
+		},
+		"valid": {
+			"description": "Matches a case whose result is valid.",
+			"properties": { "result": { "const": "valid" } },
+			"required": ["result"]
+		},
+		"hello_proof_case": {
+			"description": "A hello proof: the HMAC-SHA256 of the hello label, a 0x00 byte, the nonce's 32 bytes and the PID's 4 big-endian bytes, keyed by the token.",
+			"$ref": "#/$defs/case",
+			"properties": {
+				"token": { "$ref": "#/$defs/token" },
+				"nonce": {
+					"description": "The client's X-PipeAPI-Nonce header.",
+					"$ref": "#/$defs/base64url_32"
+				},
+				"pid": {
+					"description": "The serving process's PID.",
+					"$ref": "#/$defs/uint32"
+				},
+				"otherPid": {
+					"description": "The PID the proof was computed with in place of the case's. Only a case flagged RelayedProof has it.",
+					"$ref": "#/$defs/uint32"
+				},
+				"message": {
+					"description": "The HMAC's input, as lowercase hex. Only a valid case has it.",
+					"type": "string",
+					"pattern": "^[0-9a-f]{106}$"
+				},
+				"proof": {
+					"description": "The proof: on a valid case, the one the rules give; on an invalid one, a proof computed from a mistaken input.",
+					"$ref": "#/$defs/base64url_32"
+				}
+			},
+			"required": ["token", "nonce", "pid", "proof"],
+			"allOf": [
+				{
+					"if": { "$ref": "#/$defs/valid" },
+					"then": { "required": ["message"] },
+					"else": { "properties": { "message": false } }
+				},
+				{
+					"if": { "properties": { "flags": { "contains": { "const": "RelayedProof" } } }, "required": ["flags"] },
+					"then": { "required": ["otherPid"] },
+					"else": { "properties": { "otherPid": false } }
+				}
+			],
+			"unevaluatedProperties": false
+		},
+		"enrollment_proof_case": {
+			"description": "An enrollment proof: the HMAC-SHA256 of the enrollment label, a 0x00 byte and the challenge's 32 bytes, keyed by the token.",
+			"$ref": "#/$defs/case",
+			"properties": {
+				"token": { "$ref": "#/$defs/token" },
+				"challenge": {
+					"description": "The challenge the server's hello gave.",
+					"$ref": "#/$defs/base64url_32"
+				},
+				"otherChallenge": {
+					"description": "The challenge the proof was computed with in place of the case's. Only a case flagged OtherChallenge has it.",
+					"$ref": "#/$defs/base64url_32"
+				},
+				"message": {
+					"description": "The HMAC's input, as lowercase hex. Only a valid case has it.",
+					"type": "string",
+					"pattern": "^[0-9a-f]{100}$"
+				},
+				"proof": {
+					"description": "The proof: on a valid case, the one the rules give; on an invalid one, a proof computed from a mistaken input.",
+					"$ref": "#/$defs/base64url_32"
+				},
+				"header": {
+					"description": "The enrollment header's value: the challenge, a period, then the proof. Only a valid case has it.",
+					"type": "string",
+					"pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]\\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+				}
+			},
+			"required": ["token", "challenge", "proof"],
+			"allOf": [
+				{
+					"if": { "$ref": "#/$defs/valid" },
+					"then": { "required": ["message", "header"] },
+					"else": { "properties": { "message": false, "header": false } }
+				},
+				{
+					"if": { "properties": { "flags": { "contains": { "const": "OtherChallenge" } } }, "required": ["flags"] },
+					"then": { "required": ["otherChallenge"] },
+					"else": { "properties": { "otherChallenge": false } }
+				}
+			],
+			"unevaluatedProperties": false
+		},
+		"template_expansion_case": {
+			"description": "An endpoint as a connector expands and validates it, with the values its templates take from the context.",
+			"$ref": "#/$defs/case",
+			"properties": {
+				"platform": {
+					"description": "The client's platform, which sets the context's fields.",
+					"enum": ["windows", "posix"]
+				},
+				"endpoint": {
+					"description": "The endpoint as given, templates included.",
+					"type": "string"
+				},
+				"context": {
+					"description": "The values the templates expand to.",
+					"type": "object"
+				},
+				"expanded": {
+					"description": "The endpoint after expansion. Only a valid case has it.",
+					"type": "string",
+					"minLength": 1
+				}
+			},
+			"required": ["platform", "endpoint", "context"],
+			"allOf": [
+				{
+					"if": { "properties": { "platform": { "const": "windows" } }, "required": ["platform"] },
+					"then": { "properties": { "context": { "$ref": "#/$defs/windows_context" } } }
+				},
+				{
+					"if": { "properties": { "platform": { "const": "posix" } }, "required": ["platform"] },
+					"then": { "properties": { "context": { "$ref": "#/$defs/posix_context" } } }
+				},
+				{
+					"if": { "$ref": "#/$defs/valid" },
+					"then": { "required": ["expanded"] },
+					"else": { "properties": { "expanded": false } }
+				}
+			],
+			"unevaluatedProperties": false
+		},
+		"windows_context": {
+			"description": "What a Windows client's templates expand to.",
+			"type": "object",
+			"properties": {
+				"userName": {
+					"description": "The user name GetUserNameW returns, which {user} expands to.",
+					"type": "string",
+					"minLength": 1
+				},
+				"sessionId": {
+					"description": "The Remote Desktop Services session ID of the client's process, which {session} expands to.",
+					"$ref": "#/$defs/uint32"
+				},
+				"pid": {
+					"description": "The client's PID, which {pid} expands to.",
+					"$ref": "#/$defs/uint32"
+				}
+			},
+			"required": ["userName", "sessionId", "pid"],
+			"additionalProperties": false
+		},
+		"posix_context": {
+			"description": "What a POSIX client's templates expand to.",
+			"type": "object",
+			"properties": {
+				"uid": {
+					"description": "The effective UID, which {user} expands to.",
+					"$ref": "#/$defs/uint32"
+				},
+				"pid": {
+					"description": "The client's PID, which {pid} expands to.",
+					"$ref": "#/$defs/uint32"
+				}
+			},
+			"required": ["uid", "pid"],
+			"additionalProperties": false
+		}
+	}
+}

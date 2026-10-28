@@ -1,22 +1,18 @@
 ---
 import { Code } from '@astrojs/starlight/components';
-import { getEntry } from 'astro:content';
 import { protocolFileOnGitHub, protocolFilePath, type ProtocolVersion } from '../../protocol';
+import { openApiDocument } from './contract';
 
 interface Props {
 	readonly version: ProtocolVersion;
 }
 
 const { version } = Astro.props;
-const path = protocolFilePath(version, 'openapi.yaml');
-const openApi = await getEntry(`${version}OpenApiSource`, version);
-if (openApi === undefined) {
-	throw new Error(`${path} did not load.`);
-}
+const { source } = await openApiDocument(version);
 ---
 
 <p>
 	The OpenAPI document as the repository holds it, with every schema in full. It is also on
 	<a href={protocolFileOnGitHub(version, 'openapi.yaml')}>GitHub</a>.
 </p>
-<Code code={openApi.data.source} lang="yaml" title={path} />
+<Code code={source} lang="yaml" title={protocolFilePath(version, 'openapi.yaml')} />

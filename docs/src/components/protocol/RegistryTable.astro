@@ -1,0 +1,62 @@
+---
+import type { ProtocolVersion } from '../../protocol';
+import { anchorOf, registrySection } from './contract';
+
+interface Props {
+	readonly version: ProtocolVersion;
+	/** The section's key in the version's `registry.yaml`, such as `rejections`. */
+	readonly section: string;
+}
+
+const { version, section } = Astro.props;
+const entries = await registrySection(version, section);
+// Every field but the description, which the last column holds, in the order of their keys.
+const fields = [...new Set(entries.flatMap(({ fields }) => [...fields.keys()]))]
+	.filter((key) => key !== 'description')
+	.toSorted();
+
+function headingOf(key: string): string {
+	const words = key.replaceAll('_', ' ');
+	return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+}
+
+function textOf(value: unknown, where: string): string {
+	if (typeof value === 'string' || typeof value === 'number') {
+		return String(value);
+	}
+	throw new Error(`protocol/${version}/registry.yaml's ${where} is not text or a number.`);
+}
+---
+
+{entries.length === 0 ? (
+	<p>Protocol {version} defines none.</p>
+) : (
+	<table>
+		<thead>
+			<tr>
+				<th>Name</th>
+				{fields.map((key) => (
+					<th>{headingOf(key)}</th>
+				))}
+				<th>Description</th>
+			</tr>
+		</thead>
+		<tbody>
+			{entries.map(({ name, fields: values }) => (
+				<tr id={anchorOf(section, name)}>
+					<td>
+						<code>{name}</code>
+					</td>
+					{fields.map((key) => (
+						<td>
+							{values.get(key) === undefined ? null : (
+								<code>{textOf(values.get(key), `${section}.${name}.${key}`)}</code>
+							)}
+						</td>
+					))}
+					<td>{textOf(values.get('description'), `${section}.${name}.description`)}</td>
+				</tr>
+			))}
+		</tbody>
+	</table>
+)}

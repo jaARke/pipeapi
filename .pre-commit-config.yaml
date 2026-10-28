@@ -29,6 +29,17 @@ repos:
         name: Validate protocol v1's registry against its schema
         files: ^protocol/v1/registry\.yaml$
         args: [--schemafile, protocol/v1/registry.schema.json]
+      # Each vector file's $schema names the same schema for editors.
+      - id: check-jsonschema
+        name: Validate protocol v1's test vectors against their schema
+        files: ^protocol/v1/vectors/[a-z-]+\.json$
+        args: [--schemafile, protocol/v1/vectors/vectors.schema.json]
+      # The connector API is itself a JSON Schema, which check-metaschema checks as one; its
+      # meta-schema holds how it is written beyond that.
+      - id: check-jsonschema
+        name: Validate the connector API against its meta-schema
+        files: ^protocol/connector-api/connector-api\.schema\.json$
+        args: [--schemafile, protocol/connector-api/meta.schema.json]
       - id: check-metaschema
         name: Validate the protocol's schemas against their metaschemas
         files: ^protocol/.+\.schema\.json$
@@ -43,6 +54,16 @@ repos:
         # Every finding fails, examples that violate their schema included, which vacuum reports
         # as warnings.
         args: [--details, --fail-severity, warn, --ruleset, protocol/vacuum-ruleset.yaml]
+
+  - repo: local
+    hooks:
+      # A site page names a protocol variable, header or route only as <Cite name="..." />, which
+      # fails the build on a name the protocol's files don't hold.
+      - id: protocol-names
+        name: Cite the protocol's names in the site's pages
+        language: pygrep
+        entry: '(?<!<Cite name=")(?<!<Cite name="/)(PIPEAPI_|(?i:x-pipeapi-)|/?__pipeapi)'
+        files: ^docs/src/content/docs/.+\.mdx?$
 
   - repo: https://github.com/editorconfig-checker/editorconfig-checker
     rev: 0adfdb012938ada0cf563a40f2fceaf9466290ca # frozen: v4.0.2

@@ -13,13 +13,70 @@
 		"constants": {
 			"description": "Values fixed by the protocol.",
 			"type": "object",
-			"propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+			"propertyNames": { "$ref": "#/$defs/name" },
 			"additionalProperties": { "$ref": "#/$defs/constant" }
+		},
+		"rejections": {
+			"description": "The codes pipeapi's middleware names when it refuses a request itself.",
+			"type": "object",
+			"propertyNames": { "$ref": "#/$defs/name" },
+			"additionalProperties": { "$ref": "#/$defs/rejection" }
+		},
+		"durations": {
+			"description": "The fixed durations and the defaults of configurable ones.",
+			"type": "object",
+			"propertyNames": { "$ref": "#/$defs/name" },
+			"additionalProperties": { "$ref": "#/$defs/duration" }
+		},
+		"exit_codes": {
+			"description": "The statuses a server exits with when it stops before serving.",
+			"type": "object",
+			"propertyNames": { "$ref": "#/$defs/name" },
+			"additionalProperties": { "$ref": "#/$defs/exit_code" }
+		},
+		"features": {
+			"description": "The feature flags a server may advertise in its hello.",
+			"type": "object",
+			"propertyNames": { "$ref": "#/$defs/name" },
+			"additionalProperties": { "$ref": "#/$defs/feature" }
+		},
+		"lease_event_types": {
+			"description": "The types of the events on the lease stream. openapi.yaml's lease_event schema has a branch for each.",
+			"type": "object",
+			"propertyNames": { "$ref": "#/$defs/name" },
+			"additionalProperties": { "$ref": "#/$defs/lease_event_type" }
+		},
+		"lease_end_reasons": {
+			"description": "The reasons an end event on the lease stream gives.",
+			"type": "object",
+			"propertyNames": { "$ref": "#/$defs/name" },
+			"additionalProperties": { "$ref": "#/$defs/lease_end_reason" }
+		},
+		"protocol_versions": {
+			"description": "The protocol versions, each by its number.",
+			"type": "object",
+			"propertyNames": { "pattern": "^[1-9][0-9]*$" },
+			"additionalProperties": { "$ref": "#/$defs/protocol_version" }
 		}
 	},
-	"required": ["environment_variables", "constants"],
+	"required": [
+		"environment_variables",
+		"constants",
+		"rejections",
+		"durations",
+		"exit_codes",
+		"features",
+		"lease_event_types",
+		"lease_end_reasons",
+		"protocol_versions"
+	],
 	"additionalProperties": false,
 	"$defs": {
+		"name": {
+			"description": "A name in lowercase snake_case.",
+			"type": "string",
+			"pattern": "^[a-z][a-z0-9_]*$"
+		},
 		"description": {
 			"description": "One or two sentences of plain text on what the entry is. The spec states the rules that apply to it.",
 			"type": "string",
@@ -44,6 +101,84 @@
 				"description": { "$ref": "#/$defs/description" }
 			},
 			"required": ["value", "description"],
+			"additionalProperties": false
+		},
+		"rejection": {
+			"type": "object",
+			"properties": {
+				"status": {
+					"description": "The HTTP status of the response that carries the code.",
+					"type": "integer",
+					"minimum": 400,
+					"maximum": 599
+				},
+				"description": { "$ref": "#/$defs/description" }
+			},
+			"required": ["status", "description"],
+			"additionalProperties": false
+		},
+		"duration": {
+			"type": "object",
+			"properties": {
+				"seconds": {
+					"description": "The duration in whole seconds.",
+					"type": "integer",
+					"minimum": 0
+				},
+				"description": { "$ref": "#/$defs/description" }
+			},
+			"required": ["seconds", "description"],
+			"additionalProperties": false
+		},
+		"exit_code": {
+			"type": "object",
+			"properties": {
+				"code": {
+					"description": "The process's exit status.",
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 255
+				},
+				"description": { "$ref": "#/$defs/description" }
+			},
+			"required": ["code", "description"],
+			"additionalProperties": false
+		},
+		"feature": {
+			"type": "object",
+			"properties": {
+				"description": { "$ref": "#/$defs/description" }
+			},
+			"required": ["description"],
+			"additionalProperties": false
+		},
+		"lease_event_type": {
+			"type": "object",
+			"properties": {
+				"description": { "$ref": "#/$defs/description" }
+			},
+			"required": ["description"],
+			"additionalProperties": false
+		},
+		"lease_end_reason": {
+			"type": "object",
+			"properties": {
+				"description": { "$ref": "#/$defs/description" }
+			},
+			"required": ["description"],
+			"additionalProperties": false
+		},
+		"protocol_version": {
+			"type": "object",
+			"properties": {
+				"not_removed_before": {
+					"description": "The first day on which a server or connector may stop speaking the version. It is set once the first stable server release that speaks the next version ships.",
+					"type": "string",
+					"format": "date"
+				},
+				"description": { "$ref": "#/$defs/description" }
+			},
+			"required": ["description"],
 			"additionalProperties": false
 		}
 	}

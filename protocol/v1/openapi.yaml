@@ -23,7 +23,7 @@ paths:
     get:
       operationId: hello
       summary: Hello
-      description: Answers without credentials, so a client can verify the server before it enrolls.
+      description: Answers without credentials, so a client can verify the server before it enrolls. This route, its nonce header and the hello's protocols property are the same in every protocol version, so any client and server can negotiate a version.
       tags: [reserved]
       parameters:
         - $ref: '#/components/parameters/nonce'
@@ -34,50 +34,284 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/hello'
+              examples:
+                hello:
+                  summary: A server that speaks protocol 1 and supports no feature flag.
+                  value:
+                    protocols: [1]
+                    features: []
+                    pid: 4242
+                    proof: NLJD1Q5pZUv7ofzEbI1soiSmCCtPwrI7KBqM1MqJG0A
+                    challenge: K__r8ZEtXC6w2hRdti00Q9uuy6k85Gw_GuUJFU4--9k
+        '400':
+          description: Refused by pipeapi, with invalid_host on loopback or invalid_nonce.
+          headers:
+            X-PipeAPI-Rejected:
+              $ref: '#/components/headers/X-PipeAPI-Rejected'
+        '403':
+          $ref: '#/components/responses/origin_forbidden'
+        '503':
+          $ref: '#/components/responses/draining'
   /__pipeapi/lease:
     get:
       operationId: lease
       summary: Lease
-      description: Enrolls the client and holds its lease. The backend runs while at least one lease is open.
+      description: Enrolls the client and holds its lease, as a stream that stays open while the lease lasts. The backend runs while at least one lease is open.
       tags: [reserved]
       parameters:
         - $ref: '#/components/parameters/protocol'
+        - $ref: '#/components/parameters/enrollment'
       responses:
         '200':
-          description: Held open while the lease lasts. The lease ends when the connection closes.
+          description: The lease stream. The lease ends when the connection closes.
+          content:
+            application/jsonl:
+              itemSchema:
+                $ref: '#/components/schemas/lease_event'
+              # vacuum doesn't validate these; the conformance project's tests check each line
+              # against the item schema.
+              examples:
+                without_ttl:
+                  summary: A lease without a TTL, which the backend ends as it stops.
+                  serializedValue: |
+                    {"type":"session","client_id":"c1","secret":"u_LgMHoCZ4Cktwd4hSn2uZ1_Kfdya2402kWCRrsIIj4","lease_ttl":null}
+                    {"type":"heartbeat"}
+                    {"type":"end","reason":"shutdown"}
+                with_ttl:
+                  summary: A lease with a TTL of 90 seconds, which ends when the client stops renewing it.
+                  serializedValue: |
+                    {"type":"session","client_id":"c2","secret":"197qGGe3e46BNKRGgqG9eOxcUPp4u1i5JyJNKAsHAfI","lease_ttl":90}
+                    {"type":"heartbeat"}
+                    {"type":"heartbeat"}
+                    {"type":"end","reason":"expired"}
+        '400':
+          $ref: '#/components/responses/bad_request'
         '401':
-          description: Enrollment failed.
+          description: Refused by pipeapi, with enrollment_failed.
+          headers:
+            X-PipeAPI-Rejected:
+              $ref: '#/components/headers/X-PipeAPI-Rejected'
+            WWW-Authenticate:
+              $ref: '#/components/headers/WWW-Authenticate'
+        '403':
+          $ref: '#/components/responses/origin_forbidden'
+        '503':
+          $ref: '#/components/responses/draining'
+  /__pipeapi/renew:
+    post:
+      operationId: renew
+      summary: Renew
+      description: Renews the caller's lease. Any other request that carries the caller's session renews it too.
+      tags: [reserved]
+      parameters:
+        - $ref: '#/components/parameters/protocol'
+        - $ref: '#/components/parameters/session'
+      responses:
+        '204':
+          description: The lease is renewed.
+        '400':
+          $ref: '#/components/responses/bad_request'
+        '401':
+          $ref: '#/components/responses/invalid_session'
+        '403':
+          $ref: '#/components/responses/origin_forbidden'
   /__pipeapi/shutdown:
     post:
       operationId: shutdown
       summary: Shutdown
-      description: Stops the backend now, whatever leases are open.
+      description: Stops the backend now, whatever leases are open. Any client that holds an open lease may call it.
       tags: [reserved]
       parameters:
         - $ref: '#/components/parameters/protocol'
+        - $ref: '#/components/parameters/session'
       responses:
         '202':
           description: The backend is stopping.
+        '400':
+          $ref: '#/components/responses/bad_request'
         '401':
-          description: The request carried no session of an open lease.
+          $ref: '#/components/responses/invalid_session'
+        '403':
+          $ref: '#/components/responses/origin_forbidden'
 components:
+  # Every header is a component: a request header in parameters, a response header in headers
+  # under its own name. The guide site lists the headers from here.
   parameters:
     nonce:
       name: X-PipeAPI-Nonce
       in: header
-      description: A fresh nonce, which the hello's proof covers.
+      description: A fresh nonce for each hello, which the hello's proof covers.
       required: true
       schema:
-        type: string
+        $ref: '#/components/schemas/b64u_32'
     protocol:
       name: X-PipeAPI-Protocol
       in: header
-      description: The negotiated protocol version, sent on every request after the hello.
+      description: The negotiated protocol version, as a decimal integer, on every request after the hello.
       required: true
       schema:
         type: integer
         const: 1
+    enrollment:
+      name: X-PipeAPI-Enrollment
+      in: header
+      description: The client's answer to the hello's challenge, on the lease request. It is the challenge as the hello gave it, a period, then the enrollment proof.
+      required: true
+      schema:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$
+    session:
+      name: X-PipeAPI-Session
+      in: header
+      description: The session of the client's open lease, on every request after enrollment. It is the client ID, a period, then the session secret, as the lease's session event gave them.
+      required: true
+      schema:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{1,64}\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$
+  headers:
+    X-PipeAPI-Rejected:
+      description: The rejection code, on every response pipeapi produces itself to refuse a request. Its presence means the app never saw the request.
+      required: true
+      schema:
+        type: string
+        pattern: ^[a-z][a-z0-9_]*$
+    WWW-Authenticate:
+      # The scheme is registry.yaml's constants.auth_scheme.
+      description: The challenge on pipeapi's own 401 responses, which names pipeapi's authentication scheme and the rejection code.
+      required: true
+      schema:
+        type: string
+        pattern: ^PipeAPI error="[a-z][a-z0-9_]*"$
+  responses:
+    bad_request:
+      description: Refused by pipeapi, with invalid_host on loopback or unsupported_protocol.
+      headers:
+        X-PipeAPI-Rejected:
+          $ref: '#/components/headers/X-PipeAPI-Rejected'
+    invalid_session:
+      description: Refused by pipeapi, with invalid_session.
+      headers:
+        X-PipeAPI-Rejected:
+          $ref: '#/components/headers/X-PipeAPI-Rejected'
+        WWW-Authenticate:
+          $ref: '#/components/headers/WWW-Authenticate'
+    origin_forbidden:
+      description: Refused by pipeapi on loopback, with origin_forbidden, since the request carries an Origin header.
+      headers:
+        X-PipeAPI-Rejected:
+          $ref: '#/components/headers/X-PipeAPI-Rejected'
+    draining:
+      description: Refused by pipeapi, with draining, since the backend is stopping.
+      headers:
+        X-PipeAPI-Rejected:
+          $ref: '#/components/headers/X-PipeAPI-Rejected'
   schemas:
+    b64u_32:
+      description: Thirty-two bytes encoded as base64url without padding, in canonical form, so the last character's unused bits are zero.
+      type: string
+      pattern: ^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$
     hello:
       description: The server's hello, which a client checks before it enrolls.
       type: object
+      required: [protocols, features, pid, proof, challenge]
+      properties:
+        protocols:
+          description: The protocol versions the server speaks.
+          type: array
+          items:
+            type: integer
+            minimum: 1
+          minItems: 1
+          uniqueItems: true
+        features:
+          description: The feature flags the server supports. A client ignores a flag it doesn't know.
+          type: array
+          items:
+            type: string
+            pattern: ^[a-z][a-z0-9_]*$
+          uniqueItems: true
+        pid:
+          description: The PID of the process that created the endpoint's listener, which the OS reports to a client as the connection's peer.
+          type: integer
+          minimum: 0
+          maximum: 4294967295
+        proof:
+          $ref: '#/components/schemas/b64u_32'
+          type: string
+          description: The hello proof, which shows that the server holds the token.
+        challenge:
+          $ref: '#/components/schemas/b64u_32'
+          type: string
+          description: A single-use challenge, which this client's enrollment answers.
+    lease_event:
+      description: One event on the lease stream. A client ignores an event whose type it doesn't know.
+      type: object
+      required: [type]
+      properties:
+        type:
+          description: The event's type.
+          type: string
+      # One branch for each type registry.yaml's lease_event_types lists.
+      allOf:
+        - if:
+            required: [type]
+            properties:
+              type:
+                const: session
+          then:
+            $ref: '#/components/schemas/session_event'
+        - if:
+            required: [type]
+            properties:
+              type:
+                const: heartbeat
+          then:
+            $ref: '#/components/schemas/heartbeat_event'
+        - if:
+            required: [type]
+            properties:
+              type:
+                const: end
+          then:
+            $ref: '#/components/schemas/end_event'
+    session_event:
+      description: The lease's first event, sent once, which carries the client's session.
+      type: object
+      required: [type, client_id, secret, lease_ttl]
+      properties:
+        type:
+          type: string
+          const: session
+        client_id:
+          description: The client's ID, which the server never reuses while it runs. A client treats it as opaque.
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+        secret:
+          $ref: '#/components/schemas/b64u_32'
+          type: string
+          description: The session secret, which the session header carries with the client ID.
+        lease_ttl:
+          # The minimum is registry.yaml's durations.lease_ttl_minimum.
+          description: The lease's TTL in seconds, or null when leases have none.
+          type: [integer, 'null']
+          minimum: 30
+    heartbeat_event:
+      description: Sent at a fixed interval while the lease is open, so a client with a read-idle timeout doesn't time out.
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          const: heartbeat
+    end_event:
+      description: The last event when the server ends the lease itself, sent before it closes the stream.
+      type: object
+      required: [type, reason]
+      properties:
+        type:
+          type: string
+          const: end
+        reason:
+          description: Why the lease ended.
+          type: string
+          pattern: ^[a-z][a-z0-9_]*$

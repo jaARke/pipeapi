@@ -1,0 +1,96 @@
+{
+	"$schema": "vectors.schema.json",
+	"kind": "enrollment_proof",
+	"description": "The proof a client sends to enroll, from the token and the challenge in the server's hello, and the header value that carries it. Each invalid proof is well formed but computed from the mistaken input its flag names.",
+	"notes": {
+		"GeneratedToken": "The token is 32 random bytes encoded as base64url, as a generated token is, and its key is still its text.",
+		"UserToken": "The token is one a user gave, in ASCII with spaces and punctuation.",
+		"MultiByteToken": "The token holds 2-, 3- and 4-byte UTF-8 characters, so a key made from anything but its UTF-8 bytes differs.",
+		"WrongLabel": "The proof was computed with the hello label in place of the enrollment label.",
+		"MissingSeparator": "The proof was computed without the 0x00 byte after the label.",
+		"ChallengeAsText": "The proof was computed with the challenge's 43 base64url characters in place of the 32 bytes they decode to.",
+		"DecodedTokenKey": "The proof was computed with the bytes a generated token decodes to as the key, in place of its UTF-8 text.",
+		"OtherChallenge": "The proof was computed with otherChallenge in place of the case's challenge, as an answer to another hello's challenge is."
+	},
+	"tests": [
+		{
+			"tcId": 1,
+			"comment": "A generated token.",
+			"flags": ["GeneratedToken"],
+			"token": "ZpiH0pMYzhDNvJSrLQT0AuC6clPl72zTPqeEcTJzsw8",
+			"challenge": "VqxElyKPf_Hjc0bWzMWy_Mvm3yw165CYduRpHGdnluU",
+			"message": "706970656170692d656e726f6c6c2d76310056ac4497228f7ff1e37346d6ccc5b2fccbe6df2c35eb909876e4691c676796e5",
+			"proof": "C3tXW74nLYxMECrQMr5CmMcYVK8qq3v616dbTA_p-xc",
+			"header": "VqxElyKPf_Hjc0bWzMWy_Mvm3yw165CYduRpHGdnluU.C3tXW74nLYxMECrQMr5CmMcYVK8qq3v616dbTA_p-xc",
+			"result": "valid"
+		},
+		{
+			"tcId": 2,
+			"comment": "A token the user gave, with spaces and punctuation.",
+			"flags": ["UserToken"],
+			"token": "my token: p@ss/w0rd + (spaces) ~ #1?",
+			"challenge": "aMV7Xw6gQJm5orjKOGxbUR5hDxaaX-_iXeq0t-3iLX8",
+			"message": "706970656170692d656e726f6c6c2d76310068c57b5f0ea04099b9a2b8ca386c5b511e610f169a5fefe25deab4b7ede22d7f",
+			"proof": "u6SlcizEGan5XPda7Oadi8OAgqTqoy7M3j1ULHHxHc4",
+			"header": "aMV7Xw6gQJm5orjKOGxbUR5hDxaaX-_iXeq0t-3iLX8.u6SlcizEGan5XPda7Oadi8OAgqTqoy7M3j1ULHHxHc4",
+			"result": "valid"
+		},
+		{
+			"tcId": 3,
+			"comment": "A token with multi-byte UTF-8 characters.",
+			"flags": ["MultiByteToken"],
+			"token": "Ünïcödé tökén ☕ 𝄞",
+			"challenge": "PK446CopdsL5WseM4btkbyKg-T090hZwdLNEk65mMzc",
+			"message": "706970656170692d656e726f6c6c2d7631003cae38e82a2976c2f95ac78ce1bb646f22a0f93d3dd2167074b34493ae663337",
+			"proof": "cBJn_5vTOfdvFs4v--NJECvupGE2o0J4BzmEHBTb9kc",
+			"header": "PK446CopdsL5WseM4btkbyKg-T090hZwdLNEk65mMzc.cBJn_5vTOfdvFs4v--NJECvupGE2o0J4BzmEHBTb9kc",
+			"result": "valid"
+		},
+		{
+			"tcId": 4,
+			"comment": "The hello label in place of the enrollment label.",
+			"flags": ["WrongLabel"],
+			"token": "287Ex8JsRaTSybOQ3lIX-CblKfHcg04e5WzilyKu7Ks",
+			"challenge": "1-kgHmb-jFc3ptrwdI6y2R3Q4Ab4tT76iPPUMtmWuHE",
+			"proof": "fY-aq5JTJpMT0ZXuQBvJBF4r8GNFSxlA0rV7Wu2Jp6M",
+			"result": "invalid"
+		},
+		{
+			"tcId": 5,
+			"comment": "No 0x00 byte after the label.",
+			"flags": ["MissingSeparator"],
+			"token": "287Ex8JsRaTSybOQ3lIX-CblKfHcg04e5WzilyKu7Ks",
+			"challenge": "1-kgHmb-jFc3ptrwdI6y2R3Q4Ab4tT76iPPUMtmWuHE",
+			"proof": "dlM2Yvw324TkUkXYf6Rw0mAwX7gWmisX1cBWQ8Rv6QE",
+			"result": "invalid"
+		},
+		{
+			"tcId": 6,
+			"comment": "The challenge's base64url text in place of its bytes.",
+			"flags": ["ChallengeAsText"],
+			"token": "287Ex8JsRaTSybOQ3lIX-CblKfHcg04e5WzilyKu7Ks",
+			"challenge": "1-kgHmb-jFc3ptrwdI6y2R3Q4Ab4tT76iPPUMtmWuHE",
+			"proof": "tWPl-xhARTNBPvXAQf--WuLhMCvbEgrh--JsFJ8QxaI",
+			"result": "invalid"
+		},
+		{
+			"tcId": 7,
+			"comment": "The generated token base64url-decoded as the key.",
+			"flags": ["DecodedTokenKey"],
+			"token": "287Ex8JsRaTSybOQ3lIX-CblKfHcg04e5WzilyKu7Ks",
+			"challenge": "1-kgHmb-jFc3ptrwdI6y2R3Q4Ab4tT76iPPUMtmWuHE",
+			"proof": "-7QuZAmImkx7kanFlzvxaKEaiY9zm1MOGQdRhIZj1oo",
+			"result": "invalid"
+		},
+		{
+			"tcId": 8,
+			"comment": "A proof for a challenge other than the case's.",
+			"flags": ["OtherChallenge"],
+			"token": "287Ex8JsRaTSybOQ3lIX-CblKfHcg04e5WzilyKu7Ks",
+			"challenge": "1-kgHmb-jFc3ptrwdI6y2R3Q4Ab4tT76iPPUMtmWuHE",
+			"otherChallenge": "O3kof0vEwsbfipwk0B-LeCJW4GtSkGWRGc-Ti1lfu3Q",
+			"proof": "YC2HqVazagMg2MIT5sOSPPLVqoaPX1UItwsi00x2Diw",
+			"result": "invalid"
+		}
+	]
+}

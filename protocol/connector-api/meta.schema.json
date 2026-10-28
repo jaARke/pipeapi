@@ -1,0 +1,225 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Connector API meta-schema",
+	"description": "How connector-api.schema.json is written, beyond what makes it a JSON Schema: the definitions it holds, how it spells their names, and the description each one carries.",
+	"type": "object",
+	"properties": {
+		"$schema": { "const": "https://json-schema.org/draft/2020-12/schema" },
+		"title": { "type": "string", "minLength": 1 },
+		"description": { "$ref": "#/$defs/description" },
+		"$defs": {
+			"description": "The options of connect() and of a request, the three unions apps and connectors exchange, the reasons a Backend is lost, and the types they share.",
+			"type": "object",
+			"properties": {
+				"options": { "$ref": "#/$defs/options" },
+				"request_options": { "$ref": "#/$defs/options" },
+				"event": { "$ref": "#/$defs/event_union" },
+				"error": { "$ref": "#/$defs/error_union" },
+				"log_record": { "$ref": "#/$defs/log_record_union" },
+				"lost_reason": { "$ref": "#/$defs/enumeration" }
+			},
+			"required": ["options", "request_options", "event", "error", "log_record", "lost_reason"],
+			"propertyNames": { "$ref": "#/$defs/identifier" },
+			"additionalProperties": { "$ref": "#/$defs/described" }
+		},
+		"x-constants": {
+			"description": "The fixed values every connector uses, each a duration or a size.",
+			"type": "object",
+			"propertyNames": { "$ref": "#/$defs/identifier" },
+			"additionalProperties": { "$ref": "#/$defs/constant" }
+		}
+	},
+	"required": ["$schema", "title", "description", "$defs", "x-constants"],
+	"additionalProperties": false,
+	"$defs": {
+		"identifier": {
+			"description": "A name apps and connectors carry as a string, such as an error code, in lowercase snake_case.",
+			"type": "string",
+			"pattern": "^[a-z][a-z0-9_]*$"
+		},
+		"member": {
+			"description": "The name of an option or a field, in camelCase, which each language spells by its own conventions.",
+			"type": "string",
+			"pattern": "^[a-z][a-zA-Z0-9]*$"
+		},
+		"description": {
+			"description": "One or two sentences of plain text. The connector API page states the rules that apply.",
+			"type": "string",
+			"minLength": 1
+		},
+		"described": {
+			"description": "A schema with a description.",
+			"type": "object",
+			"properties": { "description": { "$ref": "#/$defs/description" } },
+			"required": ["description"]
+		},
+		"fields": {
+			"description": "The fields of an object, each named as a member and described.",
+			"type": "object",
+			"propertyNames": { "$ref": "#/$defs/member" },
+			"additionalProperties": { "$ref": "#/$defs/described" }
+		},
+		"tag": {
+			"description": "The field whose value names a union's member.",
+			"type": "object",
+			"properties": { "const": { "$ref": "#/$defs/identifier" } },
+			"required": ["const"],
+			"additionalProperties": false
+		},
+		"enumeration": {
+			"description": "A set of names apps match on, each a constant with a description of its own.",
+			"type": "object",
+			"properties": {
+				"description": { "$ref": "#/$defs/description" },
+				"oneOf": {
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"type": "object",
+						"properties": {
+							"const": { "$ref": "#/$defs/identifier" },
+							"description": { "$ref": "#/$defs/description" }
+						},
+						"required": ["const", "description"],
+						"additionalProperties": false
+					}
+				}
+			},
+			"required": ["description", "oneOf"],
+			"additionalProperties": false
+		},
+		"options": {
+			"type": "object",
+			"properties": {
+				"description": { "$ref": "#/$defs/description" },
+				"type": { "const": "object" },
+				"properties": {
+					"type": "object",
+					"propertyNames": { "$ref": "#/$defs/member" },
+					"additionalProperties": { "$ref": "#/$defs/option" }
+				},
+				"additionalProperties": { "const": false }
+			},
+			"required": ["description", "type", "properties", "additionalProperties"],
+			"additionalProperties": false
+		},
+		"option": {
+			"type": "object",
+			"properties": {
+				"description": { "$ref": "#/$defs/description" },
+				"x-environment-variable": {
+					"description": "The protocol environment variable the connector reads the option from, as the protocol's registry names it.",
+					"type": "string",
+					"minLength": 1
+				}
+			},
+			"required": ["description"]
+		},
+		"event_union": {
+			"type": "object",
+			"properties": {
+				"description": { "$ref": "#/$defs/description" },
+				"properties": { "$ref": "#/$defs/fields" },
+				"oneOf": {
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"type": "object",
+						"properties": {
+							"description": { "$ref": "#/$defs/description" },
+							"properties": {
+								"type": "object",
+								"properties": { "type": { "$ref": "#/$defs/tag" } },
+								"required": ["type"],
+								"propertyNames": { "$ref": "#/$defs/member" },
+								"additionalProperties": { "$ref": "#/$defs/described" }
+							}
+						},
+						"required": ["description", "properties"]
+					}
+				}
+			},
+			"required": ["description", "properties", "oneOf"]
+		},
+		"error_union": {
+			"type": "object",
+			"properties": {
+				"description": { "$ref": "#/$defs/description" },
+				"properties": { "$ref": "#/$defs/fields" },
+				"oneOf": {
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"type": "object",
+						"properties": {
+							"description": { "$ref": "#/$defs/description" },
+							"properties": {
+								"type": "object",
+								"properties": { "code": { "$ref": "#/$defs/tag" } },
+								"required": ["code"],
+								"propertyNames": { "$ref": "#/$defs/member" },
+								"additionalProperties": { "$ref": "#/$defs/described" }
+							}
+						},
+						"required": ["description", "properties"]
+					}
+				}
+			},
+			"required": ["description", "properties", "oneOf"]
+		},
+		"log_record_union": {
+			"type": "object",
+			"properties": {
+				"description": { "$ref": "#/$defs/description" },
+				"properties": { "$ref": "#/$defs/fields" },
+				"oneOf": {
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"type": "object",
+						"properties": {
+							"description": { "$ref": "#/$defs/description" },
+							"properties": {
+								"type": "object",
+								"properties": {
+									"event": { "$ref": "#/$defs/tag" },
+									"level": {
+										"description": "The level the connector logs the event at.",
+										"type": "object",
+										"properties": { "const": { "enum": ["debug", "info", "warning", "error"] } },
+										"required": ["const"],
+										"additionalProperties": false
+									}
+								},
+								"required": ["event", "level"],
+								"propertyNames": { "$ref": "#/$defs/member" },
+								"additionalProperties": { "$ref": "#/$defs/described" }
+							}
+						},
+						"required": ["description", "properties"]
+					}
+				}
+			},
+			"required": ["description", "properties", "oneOf"]
+		},
+		"constant": {
+			"type": "object",
+			"properties": {
+				"seconds": {
+					"description": "A duration in seconds.",
+					"type": "number",
+					"exclusiveMinimum": 0
+				},
+				"bytes": {
+					"description": "A size in bytes.",
+					"type": "integer",
+					"minimum": 1
+				},
+				"description": { "$ref": "#/$defs/description" }
+			},
+			"required": ["description"],
+			"oneOf": [{ "required": ["seconds"] }, { "required": ["bytes"] }],
+			"additionalProperties": false
+		}
+	}
+}

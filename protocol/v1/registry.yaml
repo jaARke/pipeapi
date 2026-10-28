@@ -3,13 +3,120 @@
 
 environment_variables:
   PIPEAPI_ENDPOINT:
-    description: The endpoint URL, passed to a spawned backend in its environment.
+    description: The endpoint URL the server binds, with its templates already expanded.
   PIPEAPI_TOKEN:
-    description: The token, passed to a spawned backend in its environment. It is 32 random bytes encoded as base64url, or a token the user gives.
+    description: The token the server proves it holds, and checks that each client holds. A generated token is 32 random bytes encoded as base64url.
   PIPEAPI_RENDEZVOUS:
     description: The path of the rendezvous file, where the server writes the port it bound. It is set only on loopback with a generated port.
+  PIPEAPI_STARTUP_GRACE:
+    description: How long the server waits for its first lease before it stops, in seconds as a non-negative decimal integer, or the word never. Unset, it is startup_grace_default.
+  PIPEAPI_IDLE_GRACE:
+    description: How long the server waits after its last lease ends before it stops, in seconds as a non-negative decimal integer, or the word never. Unset, it is idle_grace_default.
+  PIPEAPI_LEASE_TTL:
+    description: How long a lease lasts without a renewal, in seconds as a decimal integer of at least lease_ttl_minimum, or the word never. Unset or never, leases have no TTL.
 
 constants:
   host:
     value: pipeapi.localhost
     description: The value of the Host header on every request. It is never resolved.
+  auth_scheme:
+    value: PipeAPI
+    description: The authentication scheme of the WWW-Authenticate challenge on pipeapi's own 401 responses.
+  # The vectors in vectors/ are computed with these two labels.
+  hello_label:
+    value: pipeapi-hello-v1
+    description: The label that starts the input of the hello proof.
+  enrollment_label:
+    value: pipeapi-enroll-v1
+    description: The label that starts the input of the enrollment proof.
+  reserved_prefix:
+    value: /__pipeapi/
+    description: The path prefix of every reserved route. pipeapi answers every path under it itself.
+  generated_name_prefix:
+    value: pipeapi
+    description: The start of a generated pipe name, and of the name of a directory a client generates for a socket or a rendezvous file.
+  socket_file:
+    value: s.sock
+    description: The file name of a generated Unix domain socket.
+  lock_suffix:
+    value: .lock
+    description: The suffix that, appended to a Unix domain socket's path, names the lock file beside it.
+  rendezvous_file:
+    value: rendezvous.json
+    description: The file name of a generated rendezvous file.
+
+rejections:
+  invalid_host:
+    status: 400
+    description: On loopback, the Host header is not exactly the host constant.
+  origin_forbidden:
+    status: 403
+    description: On loopback, the request carries an Origin header.
+  invalid_nonce:
+    status: 400
+    description: A hello without a well-formed nonce.
+  unsupported_protocol:
+    status: 400
+    description: A request after the hello without X-PipeAPI-Protocol, or naming a version the server doesn't speak.
+  enrollment_failed:
+    status: 401
+    description: A lease request whose enrollment is missing or malformed, names a challenge the server didn't issue, already used or let expire, or carries a wrong proof.
+  invalid_session:
+    status: 401
+    description: Any other request without the session of an open lease. The session is missing or malformed, names an unknown client, carries a wrong secret, or belongs to a lease that has ended.
+  draining:
+    status: 503
+    description: A hello or a lease request while the server is stopping.
+  unknown_route:
+    status: 404
+    description: A path under the reserved prefix that names no route, or a method its route doesn't take.
+
+durations:
+  startup_grace_default:
+    seconds: 60
+    description: How long a server waits for its first lease when PIPEAPI_STARTUP_GRACE is unset.
+  idle_grace_default:
+    seconds: 0
+    description: How long a server waits after its last lease ends when PIPEAPI_IDLE_GRACE is unset.
+  lease_ttl_minimum:
+    seconds: 30
+    description: The shortest lease TTL a server accepts.
+  heartbeat_interval:
+    seconds: 15
+    description: How often the server sends a heartbeat event on each lease stream.
+  challenge_lifetime:
+    seconds: 60
+    description: How long after the hello that issued it the server accepts a challenge.
+
+exit_codes:
+  already_running:
+    code: 75
+    description: Another server holds the endpoint, so this one never served. It follows EX_TEMPFAIL from sysexits.
+  startup_failure:
+    code: 78
+    description: The server failed before it served, on an invalid environment or endpoint, a bind failure other than already_running, or a failed app import or lifespan startup. It follows EX_CONFIG from sysexits.
+
+features: {}
+
+# Each type has a branch in openapi.yaml's lease_event schema.
+lease_event_types:
+  session:
+    description: The lease's first event, sent once, which carries the client's ID and session secret and the lease's TTL.
+  heartbeat:
+    description: Sent every heartbeat_interval while the lease is open.
+  end:
+    description: The last event when the server ends the lease itself, sent before it closes the stream, with the reason.
+
+lease_end_reasons:
+  shutdown:
+    description: The backend is stopping, whether through the shutdown route, a signal or another stop. The client doesn't reconnect.
+  restart:
+    description: The backend is restarting, such as on a reload. The client may reconnect.
+  revoked:
+    description: The app revoked this client. The client doesn't reconnect.
+  expired:
+    description: The lease's TTL passed without a renewal. The client may reconnect.
+
+protocol_versions:
+  '1':
+    description: The first protocol version.

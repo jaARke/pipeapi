@@ -1,0 +1,32 @@
+---
+import type { ProtocolVersion } from '../../protocol';
+import { anchorOf, openApiDocument } from './contract';
+
+interface Props {
+	readonly version: ProtocolVersion;
+}
+
+const { version } = Astro.props;
+const { headers } = await openApiDocument(version);
+---
+
+<table>
+	<thead>
+		<tr>
+			<th>Header</th>
+			<th>Sent in</th>
+			<th>Description</th>
+		</tr>
+	</thead>
+	<tbody>
+		{headers.map(({ name, direction, description }) => (
+			<tr id={anchorOf('headers', name)}>
+				<td>
+					<code>{name}</code>
+				</td>
+				<td>{direction === 'request' ? 'Requests' : 'Responses'}</td>
+				<td>{description}</td>
+			</tr>
+		))}
+	</tbody>
+</table>

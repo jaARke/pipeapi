@@ -1,0 +1,110 @@
+---
+import type { ProtocolVersion } from '../../protocol';
+import {
+	anchorOf,
+	citationOf,
+	connectorApiSection,
+	type Citation,
+	type ConnectorApiEntry,
+} from './contract';
+
+interface Props {
+	/** The section of the connector API, such as `options`. */
+	readonly section: string;
+	/** The protocol version whose environment variables an options table links. */
+	readonly version?: ProtocolVersion;
+}
+
+const { section, version } = Astro.props;
+const entries = await connectorApiSection(section);
+
+// The columns between the name and the description, in this order, each shown when an entry of
+// the section has it. A cell an entry leaves empty shows `missing`.
+const columns = [
+	{ key: 'type', heading: 'Type', missing: '' },
+	{ key: 'default', heading: 'Default', missing: 'Unset' },
+	{ key: 'environmentVariable', heading: 'Environment variable', missing: '' },
+	{ key: 'level', heading: 'Level', missing: '' },
+	{ key: 'value', heading: 'Value', missing: '' },
+	{ key: 'fields', heading: 'Fields', missing: '' },
+] as const satisfies readonly {
+	key: keyof ConnectorApiEntry;
+	heading: string;
+	missing: string;
+}[];
+const shown = columns.filter(({ key }) => entries.some((entry) => entry[key] !== undefined));
+
+const variables = new Map<string, Citation>();
+for (const { name, environmentVariable } of entries) {
+	if (environmentVariable !== undefined) {
+		if (version === undefined) {
+			throw new Error(
+				`The connector API's ${section} table needs a version for ${name}'s environment variable.`
+			);
+		}
+		variables.set(name, await citationOf(version, environmentVariable, undefined));
+	}
+}
+---
+
+<table>
+	<thead>
+		<tr>
+			<th>Name</th>
+			{shown.map(({ heading }) => (
+				<th>{heading}</th>
+			))}
+			<th>Description</th>
+		</tr>
+	</thead>
+	<tbody>
+		{entries.map((entry) => (
+			<tr id={anchorOf(section, entry.name)}>
+				<td>
+					<code>{entry.name}</code>
+				</td>
+				{shown.map(({ key, missing }) => {
+					const variable = variables.get(entry.name);
+					switch (key) {
+						case 'fields':
+							return (
+								<td>
+									{entry.fields === undefined || entry.fields.length === 0 ? (
+										'None'
+									) : (
+										<ul>
+											{entry.fields.map((field) => (
+												<li>
+													<code>{field.name}</code> ({field.type}
+													{field.required ? '' : ', optional'}): {field.description}
+												</li>
+											))}
+										</ul>
+									)}
+								</td>
+							);
+						case 'environmentVariable':
+							return (
+								<td>
+									{variable === undefined ? (
+										missing
+									) : (
+										<a href={variable.href}>
+											<code>{variable.text}</code>
+										</a>
+									)}
+								</td>
+							);
+						case 'default':
+						case 'level':
+						case 'value':
+							return <td>{entry[key] === undefined ? missing : <code>{entry[key]}</code>}</td>;
+						case 'type':
+							return <td>{entry.type ?? missing}</td>;
+					}
+				})}
+				<td>{entry.description}</td>
+			</tr>
+		))}
+	</tbody>
+</table>

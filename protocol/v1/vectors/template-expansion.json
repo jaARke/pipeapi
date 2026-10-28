@@ -1,0 +1,480 @@
+{
+	"$schema": "vectors.schema.json",
+	"kind": "template_expansion",
+	"description": "Endpoints as a connector expands and validates them, on Windows and on POSIX, with the context their templates expand from. A valid case expands to its expanded endpoint, and an invalid one is refused.",
+	"notes": {
+		"NoTemplate": "The endpoint holds no template, so it expands to itself.",
+		"UserTemplate": "The endpoint holds {user}: the effective UID on POSIX, the user name on Windows.",
+		"SessionTemplate": "The endpoint holds {session}, the Windows session ID of the client's process.",
+		"PidTemplate": "The endpoint holds {pid}, the client's own PID.",
+		"RepeatedTemplate": "A template appears more than once, and each expands.",
+		"AdjacentTemplates": "Templates follow one another with no text between them.",
+		"NonAsciiUserName": "The Windows user name holds non-ASCII characters, which expand as they are.",
+		"UserNameWithSpace": "The Windows user name holds a space, which expands as it is.",
+		"SinglePass": "An expanded value looks like a template and stays literal, since expansion is a single pass.",
+		"PercentEncoding": "The endpoint holds percent-encoded text, which is taken literally and never decoded.",
+		"PipeNameLength": "The pipe name after expansion is at the limit of 247 UTF-16 code units or one past it, which neither its length before expansion nor its count of characters shows.",
+		"GeneratedPort": "Port 0, which asks for a generated port. A client given this endpoint also needs its rendezvous file's path, which these vectors don't model.",
+		"PortRange": "The port is at the top of the range from 0 to 65535, or one past it.",
+		"SessionInUnix": "The endpoint holds {session} in a unix:// path, where it is invalid.",
+		"UnknownTemplate": "The endpoint holds a template other than {user}, {session} and {pid}.",
+		"TemplateCase": "A template's name in another case, which doesn't match, since names are case-sensitive.",
+		"StrayBrace": "A brace that isn't part of a template; doubled braces are no escape.",
+		"TemplateInTcp": "A template in a tcp:// endpoint, which carries none.",
+		"RelativePath": "The unix:// path is relative, as given or after expansion.",
+		"TcpHost": "The tcp:// host is neither 127.0.0.1 nor [::1].",
+		"ReservedPort": "Port 80 or 443, which are refused.",
+		"PortLeadingZero": "The port is written with a leading zero.",
+		"TrailingText": "Text follows the tcp:// endpoint's port.",
+		"PipeNameSeparator": "The pipe name holds a / or a \\.",
+		"EmptyPipeName": "The pipe name is empty.",
+		"UnknownScheme": "The endpoint's scheme is none of unix, npipe and tcp.",
+		"SchemeCase": "The scheme in capitals, which doesn't match, since the forms are case-sensitive.",
+		"UnsupportedTransport": "The endpoint's transport is one the platform doesn't support: unix:// on Windows, or npipe:// on POSIX."
+	},
+	"tests": [
+		{
+			"tcId": 1,
+			"comment": "A named pipe with no template.",
+			"flags": ["NoTemplate"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"expanded": "npipe:////./pipe/myapp",
+			"result": "valid"
+		},
+		{
+			"tcId": 2,
+			"comment": "A loopback TCP endpoint on Windows.",
+			"flags": ["NoTemplate"],
+			"platform": "windows",
+			"endpoint": "tcp://127.0.0.1:8080",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"expanded": "tcp://127.0.0.1:8080",
+			"result": "valid"
+		},
+		{
+			"tcId": 3,
+			"comment": "A Unix domain socket with no template.",
+			"flags": ["NoTemplate"],
+			"platform": "posix",
+			"endpoint": "unix:///run/user/1000/myapp/s.sock",
+			"context": { "uid": 1000, "pid": 4242 },
+			"expanded": "unix:///run/user/1000/myapp/s.sock",
+			"result": "valid"
+		},
+		{
+			"tcId": 4,
+			"comment": "An IPv6 loopback TCP endpoint on POSIX.",
+			"flags": ["NoTemplate"],
+			"platform": "posix",
+			"endpoint": "tcp://[::1]:8080",
+			"context": { "uid": 1000, "pid": 4242 },
+			"expanded": "tcp://[::1]:8080",
+			"result": "valid"
+		},
+		{
+			"tcId": 5,
+			"comment": "The user name in a pipe name.",
+			"flags": ["UserTemplate"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp-{user}",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"expanded": "npipe:////./pipe/myapp-alice",
+			"result": "valid"
+		},
+		{
+			"tcId": 6,
+			"comment": "The effective UID in a socket path.",
+			"flags": ["UserTemplate"],
+			"platform": "posix",
+			"endpoint": "unix:///run/user/{user}/myapp/s.sock",
+			"context": { "uid": 1000, "pid": 4242 },
+			"expanded": "unix:///run/user/1000/myapp/s.sock",
+			"result": "valid"
+		},
+		{
+			"tcId": 7,
+			"comment": "The session ID in a pipe name.",
+			"flags": ["SessionTemplate"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp-{session}",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"expanded": "npipe:////./pipe/myapp-1",
+			"result": "valid"
+		},
+		{
+			"tcId": 8,
+			"comment": "The client's PID in a pipe name.",
+			"flags": ["PidTemplate"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp-{pid}",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"expanded": "npipe:////./pipe/myapp-4242",
+			"result": "valid"
+		},
+		{
+			"tcId": 9,
+			"comment": "The client's PID in a socket path.",
+			"flags": ["PidTemplate"],
+			"platform": "posix",
+			"endpoint": "unix:///tmp/myapp-{pid}.sock",
+			"context": { "uid": 1000, "pid": 4242 },
+			"expanded": "unix:///tmp/myapp-4242.sock",
+			"result": "valid"
+		},
+		{
+			"tcId": 10,
+			"comment": "The effective UID twice in a socket path.",
+			"flags": ["UserTemplate", "RepeatedTemplate"],
+			"platform": "posix",
+			"endpoint": "unix:///run/user/{user}/myapp-{user}.sock",
+			"context": { "uid": 1000, "pid": 4242 },
+			"expanded": "unix:///run/user/1000/myapp-1000.sock",
+			"result": "valid"
+		},
+		{
+			"tcId": 11,
+			"comment": "All three templates side by side in a pipe name.",
+			"flags": ["AdjacentTemplates"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp-{user}{session}{pid}",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"expanded": "npipe:////./pipe/myapp-alice14242",
+			"result": "valid"
+		},
+		{
+			"tcId": 12,
+			"comment": "Both POSIX templates side by side in a socket path.",
+			"flags": ["AdjacentTemplates"],
+			"platform": "posix",
+			"endpoint": "unix:///tmp/myapp-{user}{pid}.sock",
+			"context": { "uid": 1000, "pid": 4242 },
+			"expanded": "unix:///tmp/myapp-10004242.sock",
+			"result": "valid"
+		},
+		{
+			"tcId": 13,
+			"comment": "A user name with a non-ASCII letter.",
+			"flags": ["UserTemplate", "NonAsciiUserName"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp-{user}",
+			"context": { "userName": "Søren", "sessionId": 1, "pid": 4242 },
+			"expanded": "npipe:////./pipe/myapp-Søren",
+			"result": "valid"
+		},
+		{
+			"tcId": 14,
+			"comment": "A user name with a space.",
+			"flags": ["UserTemplate", "UserNameWithSpace"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp-{user}",
+			"context": { "userName": "Jane Doe", "sessionId": 1, "pid": 4242 },
+			"expanded": "npipe:////./pipe/myapp-Jane Doe",
+			"result": "valid"
+		},
+		{
+			"tcId": 15,
+			"comment": "A user name that reads {pid}, which stays literal.",
+			"flags": ["UserTemplate", "SinglePass"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp-{user}",
+			"context": { "userName": "{pid}", "sessionId": 1, "pid": 4242 },
+			"expanded": "npipe:////./pipe/myapp-{pid}",
+			"result": "valid"
+		},
+		{
+			"tcId": 16,
+			"comment": "An encoded space in a socket path, kept as written.",
+			"flags": ["PercentEncoding"],
+			"platform": "posix",
+			"endpoint": "unix:///run/my%20app/s.sock",
+			"context": { "uid": 1000, "pid": 4242 },
+			"expanded": "unix:///run/my%20app/s.sock",
+			"result": "valid"
+		},
+		{
+			"tcId": 17,
+			"comment": "An encoded {user} in a pipe name, which is no template.",
+			"flags": ["PercentEncoding"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp-%7Buser%7D",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"expanded": "npipe:////./pipe/myapp-%7Buser%7D",
+			"result": "valid"
+		},
+		{
+			"tcId": 18,
+			"comment": "A pipe name of 248 characters as given and 247 after expansion.",
+			"flags": ["UserTemplate", "PipeNameLength"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/{user}xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"expanded": "npipe:////./pipe/alicexxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+			"result": "valid"
+		},
+		{
+			"tcId": 19,
+			"comment": "Port 0 on the IPv4 loopback address.",
+			"flags": ["GeneratedPort"],
+			"platform": "windows",
+			"endpoint": "tcp://127.0.0.1:0",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"expanded": "tcp://127.0.0.1:0",
+			"result": "valid"
+		},
+		{
+			"tcId": 20,
+			"comment": "The highest port.",
+			"flags": ["PortRange"],
+			"platform": "posix",
+			"endpoint": "tcp://127.0.0.1:65535",
+			"context": { "uid": 1000, "pid": 4242 },
+			"expanded": "tcp://127.0.0.1:65535",
+			"result": "valid"
+		},
+		{
+			"tcId": 21,
+			"comment": "The session ID in a socket path.",
+			"flags": ["SessionInUnix"],
+			"platform": "posix",
+			"endpoint": "unix:///run/myapp-{session}.sock",
+			"context": { "uid": 1000, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 22,
+			"comment": "A {uid} template, which doesn't exist.",
+			"flags": ["UnknownTemplate"],
+			"platform": "posix",
+			"endpoint": "unix:///run/user/{uid}/myapp/s.sock",
+			"context": { "uid": 1000, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 23,
+			"comment": "An empty template.",
+			"flags": ["UnknownTemplate"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp-{}",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 24,
+			"comment": "{USER} in capitals.",
+			"flags": ["TemplateCase"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp-{USER}",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 25,
+			"comment": "An opening brace with no template.",
+			"flags": ["StrayBrace"],
+			"platform": "posix",
+			"endpoint": "unix:///run/myapp-{.sock",
+			"context": { "uid": 1000, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 26,
+			"comment": "A closing brace with no template.",
+			"flags": ["StrayBrace"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp}",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 27,
+			"comment": "A template in doubled braces.",
+			"flags": ["StrayBrace"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp-{{user}}",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 28,
+			"comment": "The client's PID as a TCP port.",
+			"flags": ["TemplateInTcp"],
+			"platform": "windows",
+			"endpoint": "tcp://127.0.0.1:{pid}",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 29,
+			"comment": "A pipe name of 247 characters as given and 248 after expansion.",
+			"flags": ["PidTemplate", "PipeNameLength"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/{pid}xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 123456 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 30,
+			"comment": "A relative socket path.",
+			"flags": ["RelativePath"],
+			"platform": "posix",
+			"endpoint": "unix://run/myapp/s.sock",
+			"context": { "uid": 1000, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 31,
+			"comment": "A socket path that starts with a template, so is relative after expansion.",
+			"flags": ["UserTemplate", "RelativePath"],
+			"platform": "posix",
+			"endpoint": "unix://{user}/myapp/s.sock",
+			"context": { "uid": 1000, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 32,
+			"comment": "A host name in place of a loopback address.",
+			"flags": ["TcpHost"],
+			"platform": "windows",
+			"endpoint": "tcp://localhost:8080",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 33,
+			"comment": "The IPv4 wildcard address.",
+			"flags": ["TcpHost"],
+			"platform": "posix",
+			"endpoint": "tcp://0.0.0.0:8080",
+			"context": { "uid": 1000, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 34,
+			"comment": "The IPv6 wildcard address.",
+			"flags": ["TcpHost"],
+			"platform": "posix",
+			"endpoint": "tcp://[::]:8080",
+			"context": { "uid": 1000, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 35,
+			"comment": "Port 80.",
+			"flags": ["ReservedPort"],
+			"platform": "windows",
+			"endpoint": "tcp://127.0.0.1:80",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 36,
+			"comment": "Port 443.",
+			"flags": ["ReservedPort"],
+			"platform": "posix",
+			"endpoint": "tcp://[::1]:443",
+			"context": { "uid": 1000, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 37,
+			"comment": "A port one past the highest.",
+			"flags": ["PortRange"],
+			"platform": "posix",
+			"endpoint": "tcp://127.0.0.1:65536",
+			"context": { "uid": 1000, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 38,
+			"comment": "Port 8080 written with a leading zero.",
+			"flags": ["PortLeadingZero"],
+			"platform": "windows",
+			"endpoint": "tcp://127.0.0.1:08080",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 39,
+			"comment": "A path after the port.",
+			"flags": ["TrailingText"],
+			"platform": "windows",
+			"endpoint": "tcp://127.0.0.1:8080/",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 40,
+			"comment": "A slash in a pipe name.",
+			"flags": ["PipeNameSeparator"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp/s",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 41,
+			"comment": "A backslash in a pipe name.",
+			"flags": ["PipeNameSeparator"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/myapp\\s",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 42,
+			"comment": "A pipe with no name.",
+			"flags": ["EmptyPipeName"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 43,
+			"comment": "An HTTP URL.",
+			"flags": ["UnknownScheme"],
+			"platform": "posix",
+			"endpoint": "http://127.0.0.1:8080",
+			"context": { "uid": 1000, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 44,
+			"comment": "A pipe name of 247 characters and 248 UTF-16 code units, since its last character is outside the Basic Multilingual Plane.",
+			"flags": ["PipeNameLength"],
+			"platform": "windows",
+			"endpoint": "npipe:////./pipe/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 45,
+			"comment": "A named pipe with its scheme in capitals.",
+			"flags": ["SchemeCase"],
+			"platform": "windows",
+			"endpoint": "NPIPE:////./pipe/myapp",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 46,
+			"comment": "A Unix domain socket on Windows.",
+			"flags": ["UnsupportedTransport"],
+			"platform": "windows",
+			"endpoint": "unix:///run/user/1000/myapp/s.sock",
+			"context": { "userName": "alice", "sessionId": 1, "pid": 4242 },
+			"result": "invalid"
+		},
+		{
+			"tcId": 47,
+			"comment": "A named pipe on POSIX.",
+			"flags": ["UnsupportedTransport"],
+			"platform": "posix",
+			"endpoint": "npipe:////./pipe/myapp",
+			"context": { "uid": 1000, "pid": 4242 },
+			"result": "invalid"
+		}
+	]
+}
