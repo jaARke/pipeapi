@@ -52,7 +52,9 @@ jobs:
   report:
     name: Report broken links
     needs: check
-    if: needs.check.result == 'failure'
+    # A job's if tests success() first unless it calls a status function, which would skip this job
+    # whenever check fails.
+    if: failure()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
