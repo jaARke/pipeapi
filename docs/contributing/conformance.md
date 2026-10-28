@@ -1,6 +1,6 @@
 # The conformance project
 
-`conformance/` is the conformance project ([#5](https://github.com/jaARke/pipeapi/issues/5)). It holds the reference app, a FastAPI app whose routes and settings give the conformance cases something to exercise and observe, and the app's own tests. It's a Python project that follows the [Python projects](python.md) conventions.
+`conformance/` is the conformance project ([#5](https://github.com/jaARke/pipeapi/issues/5)). It holds the reference app, a FastAPI app whose routes and settings give the conformance cases something to exercise and observe, and the app's own tests. Its tests also check the protocol's files: the test vectors, through a second implementation of their rules, and the examples of streams in each `openapi.yaml`, against their item schemas. It's a Python project that follows the [Python projects](python.md) conventions.
 
 `just conformance::check` checks the project as a pull request must, and `just conformance::fix` applies ruff's fixes and formatting. CONTRIBUTING.md's [prerequisites](../../CONTRIBUTING.md#prerequisites) say what each needs.
 

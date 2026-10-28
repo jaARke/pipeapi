@@ -1,0 +1,34 @@
+---
+import { citationOf, citedVersion, connectorApiCitationOf } from './contract';
+
+interface Props {
+	/**
+	 * The name: a `PIPEAPI_` variable, a header or a reserved route's path, or with `section`, an
+	 * entry of that registry section, or with `connectorApi`, an entry of that section of the
+	 * connector API. The build fails when the files don't hold it.
+	 */
+	readonly name: string;
+	/** The registry section that holds the name, such as `rejections`. */
+	readonly section?: string;
+	/** The protocol version whose files hold the name. A version's own pages may leave it out. */
+	readonly version?: string;
+	/** The section of the connector API that holds the name, such as `errors`, on any page. */
+	readonly connectorApi?: string;
+}
+
+const { name, section, version, connectorApi } = Astro.props;
+const page = Astro.locals.starlightRoute.id;
+if (connectorApi !== undefined && (section !== undefined || version !== undefined)) {
+	throw new Error(
+		`A citation of ${name} on ${page} names a connector API section with a protocol's section or version.`
+	);
+}
+const { text, href } =
+	connectorApi === undefined
+		? await citationOf(citedVersion(page, version), name, section)
+		: await connectorApiCitationOf(name, connectorApi);
+---
+
+<a href={href}>
+	<code>{text}</code>
+</a>

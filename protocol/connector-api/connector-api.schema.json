@@ -1,0 +1,556 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Connector API",
+	"description": "The options, lifecycle events, errors and log records every pipeapi connector shares, as JSON can carry them, and the fixed values every connector uses. Each language offers them in its own idiom.",
+	"$defs": {
+		"options": {
+			"description": "The options connect() takes, every one of them optional. A language may also accept a value JSON can't carry where an option's description says so, such as a stream.",
+			"type": "object",
+			"properties": {
+				"endpoint": {
+					"description": "The endpoint URL of the backend, which may hold templates. When neither this option nor its environment variable gives one, the connector generates one, with a token.",
+					"type": "string",
+					"x-environment-variable": "PIPEAPI_ENDPOINT"
+				},
+				"transport": {
+					"description": "The transport of the endpoint the connector generates, named by its URL's scheme. Unset, it is a named pipe on Windows and a Unix domain socket elsewhere. A given endpoint ignores it.",
+					"enum": ["npipe", "unix", "tcp"]
+				},
+				"token": {
+					"description": "The token the backend and its clients share, which a given endpoint needs. The connector generates one only with the endpoint it generates.",
+					"type": "string",
+					"minLength": 1,
+					"x-environment-variable": "PIPEAPI_TOKEN"
+				},
+				"rendezvous": {
+					"description": "The absolute path of the rendezvous file another client generated for its loopback endpoint, which a client given that endpoint, whose port is 0, needs.",
+					"type": "string",
+					"minLength": 1,
+					"x-environment-variable": "PIPEAPI_RENDEZVOUS"
+				},
+				"envPrefix": {
+					"description": "A prefix for the names of the environment variables the connector reads. Unset, it reads the protocol's own names.",
+					"type": "string",
+					"pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"
+				},
+				"name": {
+					"description": "The backend's name, which the name of a generated pipe and every log record carry.",
+					"type": "string",
+					"pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+					"maxLength": 64
+				},
+				"command": {
+					"description": "The program that starts the backend, as a path or a name the OS looks up. Unset, the connector only attaches to a backend that is already running.",
+					"type": "string",
+					"minLength": 1
+				},
+				"args": {
+					"description": "The arguments the connector passes to the command.",
+					"type": "array",
+					"items": { "type": "string" },
+					"default": []
+				},
+				"cwd": {
+					"description": "The working directory of a spawned backend. Unset, it is the client's own.",
+					"type": "string",
+					"minLength": 1
+				},
+				"env": {
+					"description": "Variables to set in a spawned backend's environment, over the client's own. A name of the protocol's form for its environment variables, alone or after a prefix and compared without regard to case, is invalid here.",
+					"type": "object",
+					"propertyNames": {
+						"pattern": "^[^=]+$",
+						"not": { "pattern": "(^|_)[Pp][Ii][Pp][Ee][Aa][Pp][Ii]_[A-Za-z][A-Za-z0-9_]*$" }
+					},
+					"additionalProperties": { "type": "string" },
+					"default": {}
+				},
+				"stdin": {
+					"description": "What a spawned backend's standard input reads: the null device, the client's own input, or a pipe the Backend exposes. A stream the app supplies is also accepted, in its language's form.",
+					"enum": ["null_device", "inherit", "pipe"],
+					"default": "null_device"
+				},
+				"stdout": {
+					"description": "Where a spawned backend's standard output goes.",
+					"$ref": "#/$defs/output",
+					"default": "log"
+				},
+				"stderr": {
+					"description": "Where a spawned backend's standard error goes.",
+					"$ref": "#/$defs/output",
+					"default": "log"
+				},
+				"startupGrace": {
+					"description": "The startup grace a spawned backend receives. Unset, the backend uses the protocol's default.",
+					"$ref": "#/$defs/whole_seconds_or_never",
+					"x-environment-variable": "PIPEAPI_STARTUP_GRACE"
+				},
+				"idleGrace": {
+					"description": "The idle grace a spawned backend receives. Unset, the backend uses the protocol's default. It can't be never for an endpoint the connector generates.",
+					"$ref": "#/$defs/whole_seconds_or_never",
+					"x-environment-variable": "PIPEAPI_IDLE_GRACE"
+				},
+				"leaseTtl": {
+					"description": "The lease TTL a spawned backend receives, at least the protocol's minimum. Unset, its leases have no TTL.",
+					"$ref": "#/$defs/whole_seconds_or_never",
+					"x-environment-variable": "PIPEAPI_LEASE_TTL"
+				},
+				"connectTimeout": {
+					"description": "How long connect() may take, from its call until the backend is ready for requests, and how long the connector retries opening a connection.",
+					"$ref": "#/$defs/seconds",
+					"default": 15
+				},
+				"reconnectBudget": {
+					"description": "How long the connector tries to reconnect after its lease ends before it gives up. Unset, it is connectTimeout's value.",
+					"$ref": "#/$defs/seconds"
+				},
+				"respawn": {
+					"description": "Whether the connector respawns a backend it spawned after the backend exits unexpectedly.",
+					"type": "boolean",
+					"default": false
+				},
+				"respawnLimit": {
+					"description": "The most restarts within respawnWindow before the connector gives up.",
+					"type": "integer",
+					"minimum": 1,
+					"default": 4
+				},
+				"respawnWindow": {
+					"description": "The period respawnLimit counts restarts over.",
+					"$ref": "#/$defs/seconds",
+					"default": 180
+				},
+				"respawnBackoff": {
+					"description": "How long the connector waits before the first restart. The wait doubles with each restart after it.",
+					"$ref": "#/$defs/seconds",
+					"default": 1
+				},
+				"respawnBackoffMaximum": {
+					"description": "The longest the connector waits before a restart.",
+					"$ref": "#/$defs/seconds",
+					"default": 30
+				},
+				"respawnBackoffReset": {
+					"description": "How long a respawned backend runs before the wait starts again from respawnBackoff.",
+					"$ref": "#/$defs/seconds",
+					"default": 60
+				}
+			},
+			"additionalProperties": false
+		},
+		"request_options": {
+			"description": "The options a request through the untyped request or the primitive takes, each of them optional, in its language's form for a request's options.",
+			"type": "object",
+			"properties": {
+				"waitForReady": {
+					"description": "Whether the request waits while the connector reconnects, rather than failing at once.",
+					"type": "boolean",
+					"default": true
+				},
+				"safeRetry": {
+					"description": "Whether the connector may send the request again after its connection drops, where that is safe.",
+					"type": "boolean",
+					"default": true
+				}
+			},
+			"additionalProperties": false
+		},
+		"event": {
+			"description": "A lifecycle event a Backend emits, in its language's native event form.",
+			"type": "object",
+			"properties": {
+				"type": { "description": "The event's type.", "type": "string" }
+			},
+			"required": ["type"],
+			"oneOf": [
+				{
+					"description": "The connector's lease ended, and it is opening a new one on the same endpoint.",
+					"properties": {
+						"type": { "const": "reconnecting" },
+						"endReason": { "description": "The reason the lease's end event gave, or null when the lease ended without one.", "type": ["string", "null"] }
+					},
+					"required": ["endReason"]
+				},
+				{
+					"description": "The connector opened a new lease after its lease ended, so the client has a new client ID.",
+					"properties": {
+						"type": { "const": "reconnected" },
+						"oldClientId": { "description": "The client ID of the lease that ended.", "$ref": "#/$defs/client_id" },
+						"newClientId": { "description": "The client ID of the new lease.", "$ref": "#/$defs/client_id" }
+					},
+					"required": ["oldClientId", "newClientId"]
+				},
+				{
+					"description": "The connector spawned the backend again after it exited unexpectedly, and opened a lease on it.",
+					"properties": {
+						"type": { "const": "respawned" },
+						"oldClientId": { "description": "The client ID of the lease on the backend that exited.", "$ref": "#/$defs/client_id" },
+						"newClientId": { "description": "The client ID of the lease on the new backend.", "$ref": "#/$defs/client_id" }
+					},
+					"required": ["oldClientId", "newClientId"]
+				},
+				{
+					"description": "The Backend has no backend and won't get one again, so it serves no more requests.",
+					"properties": {
+						"type": { "const": "lost" },
+						"reason": { "description": "Why the Backend was lost.", "$ref": "#/$defs/lost_reason" },
+						"error": { "description": "The code of the error that ended the connector's last attempt to reconnect or respawn, or null when no attempt failed with one.", "type": ["string", "null"] },
+						"exitCode": { "description": "The exit status of a backend this connector spawned and saw exit before the Backend was lost, or null.", "type": ["integer", "null"] },
+						"signal": { "description": "The name of the signal that ended a backend this connector spawned and saw exit, such as SIGKILL, or null.", "type": ["string", "null"] },
+						"stderrTail": { "description": "The stderr tail of a backend this connector spawned, or null when another client spawned it or its stderr was inherited.", "type": ["string", "null"] }
+					},
+					"required": ["reason", "error", "exitCode", "signal", "stderrTail"]
+				}
+			]
+		},
+		"error": {
+			"description": "An error a connector raises for a transport or lifecycle failure, or for a validation error the app answered with.",
+			"type": "object",
+			"properties": {
+				"code": { "description": "The error's code.", "type": "string" }
+			},
+			"required": ["code"],
+			"oneOf": [
+				{
+					"description": "An option, or the environment variable it was read from, has a value the connector can't use.",
+					"properties": {
+						"code": { "const": "invalid_option" },
+						"option": { "description": "The option's name, as this file spells it.", "type": "string" }
+					},
+					"required": ["option"]
+				},
+				{
+					"description": "The endpoint breaks the protocol's rules for endpoint URLs or templates, or is a loopback endpoint whose port is 0 given without its rendezvous file.",
+					"properties": {
+						"code": { "const": "invalid_endpoint" },
+						"endpoint": { "description": "The endpoint as the connector was given it.", "type": "string" }
+					},
+					"required": ["endpoint"]
+				},
+				{
+					"description": "The endpoint's transport doesn't exist on this platform, such as a named pipe on Linux.",
+					"properties": {
+						"code": { "const": "unsupported_transport" },
+						"endpoint": { "description": "The endpoint as the connector was given it.", "type": "string" }
+					},
+					"required": ["endpoint"]
+				},
+				{
+					"description": "The OS couldn't start the command, such as when it doesn't exist or isn't executable.",
+					"properties": {
+						"code": { "const": "spawn_failed" },
+						"command": { "description": "The command the connector tried to start.", "type": "string" }
+					},
+					"required": ["command"]
+				},
+				{
+					"description": "The backend the connector spawned exited before it was ready.",
+					"properties": {
+						"code": { "const": "startup_failed" },
+						"exitCode": { "description": "The backend's exit status, or null when a signal ended it.", "type": ["integer", "null"] },
+						"signal": { "description": "The name of the signal that ended the backend, or null when none did.", "type": ["string", "null"] },
+						"stderrTail": { "description": "The stderr tail, or null when the backend's stderr was inherited.", "type": ["string", "null"] }
+					},
+					"required": ["exitCode", "signal", "stderrTail"]
+				},
+				{
+					"description": "The connect timeout, or the reconnect budget, passed before a backend was ready.",
+					"properties": { "code": { "const": "connect_timeout" } }
+				},
+				{
+					"description": "The server at the endpoint rejected the hello, or didn't answer it with a well-formed proof that it holds the token, or its PID didn't match the connection's, so the connector stopped without enrolling.",
+					"properties": { "code": { "const": "verification_failed" } }
+				},
+				{
+					"description": "The connector and the server speak no protocol version in common.",
+					"properties": {
+						"code": { "const": "no_common_protocol" },
+						"clientProtocols": { "description": "The protocol versions the connector speaks.", "$ref": "#/$defs/protocol_versions" },
+						"serverProtocols": { "description": "The protocol versions the server's hello lists.", "$ref": "#/$defs/protocol_versions" }
+					},
+					"required": ["clientProtocols", "serverProtocols"]
+				},
+				{
+					"description": "A verified server answered a reserved route in a way the protocol doesn't allow, such as with a malformed lease event, or rejected the lease request it had offered.",
+					"properties": { "code": { "const": "protocol_error" } }
+				},
+				{
+					"description": "No backend serves this client: nothing accepted a connection to the endpoint and the connector may not spawn a backend, or the Backend was lost.",
+					"properties": { "code": { "const": "backend_unavailable" } }
+				},
+				{
+					"description": "The connection dropped after the connector wrote some of a request and before its response arrived in full, so the app may have processed it.",
+					"properties": { "code": { "const": "request_interrupted" } }
+				},
+				{
+					"description": "The app closed the Backend before this call.",
+					"properties": { "code": { "const": "closed" } }
+				},
+				{
+					"description": "The app answered a request with a 422 validation error, which ValidationError turned into this error.",
+					"properties": {
+						"code": { "const": "validation_error" },
+						"detail": {
+							"description": "Each validation failure, as FastAPI's response gives it.",
+							"type": "array",
+							"items": { "$ref": "#/$defs/validation_failure" }
+						}
+					},
+					"required": ["detail"]
+				}
+			]
+		},
+		"log_record": {
+			"description": "A record a connector logs, at its event's level, in its language's logging mechanism.",
+			"type": "object",
+			"properties": {
+				"event": { "description": "The event the record logs.", "type": "string" },
+				"level": { "description": "The record's level.", "enum": ["debug", "info", "warning", "error"] },
+				"name": { "description": "The backend's name, or null when it has none.", "type": ["string", "null"] },
+				"clientId": {
+					"description": "The client ID of the current lease, or null before the first lease opens.",
+					"anyOf": [{ "$ref": "#/$defs/client_id" }, { "type": "null" }]
+				}
+			},
+			"required": ["event", "level", "name", "clientId"],
+			"oneOf": [
+				{
+					"description": "The connector started the backend.",
+					"properties": {
+						"event": { "const": "spawned" },
+						"level": { "const": "info" },
+						"pid": { "description": "The PID of the process the connector started.", "type": "integer", "minimum": 0 },
+						"command": { "description": "The command, without its arguments.", "type": "string" },
+						"endpoint": { "description": "The endpoint, with its templates expanded.", "type": "string" }
+					},
+					"required": ["pid", "command", "endpoint"]
+				},
+				{
+					"description": "A backend that was already running answered at the endpoint.",
+					"properties": {
+						"event": { "const": "attached" },
+						"level": { "const": "info" },
+						"endpoint": { "description": "The endpoint, with its templates expanded.", "type": "string" }
+					},
+					"required": ["endpoint"]
+				},
+				{
+					"description": "The server's hello checked out.",
+					"properties": {
+						"event": { "const": "hello_verified" },
+						"level": { "const": "debug" },
+						"protocol": { "description": "The protocol version the connector chose.", "type": "integer", "minimum": 1 },
+						"serverPid": { "description": "The PID the hello gave.", "type": "integer", "minimum": 0 }
+					},
+					"required": ["protocol", "serverPid"]
+				},
+				{
+					"description": "The server's hello didn't check out, so the connector stopped without enrolling.",
+					"properties": {
+						"event": { "const": "verification_failed" },
+						"level": { "const": "error" }
+					}
+				},
+				{
+					"description": "The connector enrolled and opened its lease.",
+					"properties": {
+						"event": { "const": "lease_opened" },
+						"level": { "const": "info" },
+						"leaseTtl": { "description": "The lease's TTL in seconds, or null when it has none.", "type": ["integer", "null"] }
+					},
+					"required": ["leaseTtl"]
+				},
+				{
+					"description": "A request to renew the lease failed.",
+					"properties": {
+						"event": { "const": "renewal_failed" },
+						"level": { "const": "warning" }
+					}
+				},
+				{
+					"description": "The connector emitted the reconnecting event.",
+					"properties": {
+						"event": { "const": "reconnecting" },
+						"level": { "const": "warning" },
+						"endReason": { "description": "The reason the lease's end event gave, or null when the lease ended without one.", "type": ["string", "null"] }
+					},
+					"required": ["endReason"]
+				},
+				{
+					"description": "The connector emitted the reconnected event.",
+					"properties": {
+						"event": { "const": "reconnected" },
+						"level": { "const": "info" },
+						"oldClientId": { "description": "The client ID of the lease that ended.", "$ref": "#/$defs/client_id" },
+						"newClientId": { "description": "The client ID of the new lease.", "$ref": "#/$defs/client_id" }
+					},
+					"required": ["oldClientId", "newClientId"]
+				},
+				{
+					"description": "The connector emitted the respawned event.",
+					"properties": {
+						"event": { "const": "respawned" },
+						"level": { "const": "warning" },
+						"pid": { "description": "The PID of the process the connector started.", "type": "integer", "minimum": 0 },
+						"oldClientId": { "description": "The client ID of the lease on the backend that exited.", "$ref": "#/$defs/client_id" },
+						"newClientId": { "description": "The client ID of the lease on the new backend.", "$ref": "#/$defs/client_id" }
+					},
+					"required": ["pid", "oldClientId", "newClientId"]
+				},
+				{
+					"description": "The connector emitted the lost event.",
+					"properties": {
+						"event": { "const": "lost" },
+						"level": { "const": "error" },
+						"reason": { "description": "Why the Backend was lost.", "$ref": "#/$defs/lost_reason" },
+						"error": { "description": "The code of the error that ended the connector's last attempt to reconnect or respawn, or null.", "type": ["string", "null"] },
+						"exitCode": { "description": "The exit status of a backend this connector spawned and saw exit before the Backend was lost, or null.", "type": ["integer", "null"] },
+						"signal": { "description": "The name of the signal that ended a backend this connector spawned and saw exit, or null.", "type": ["string", "null"] }
+					},
+					"required": ["reason", "error", "exitCode", "signal"]
+				},
+				{
+					"description": "A backend the connector spawned exited.",
+					"properties": {
+						"event": { "const": "backend_exited" },
+						"level": { "const": "info" },
+						"pid": { "description": "The PID of the process that exited.", "type": "integer", "minimum": 0 },
+						"exitCode": { "description": "The process's exit status, or null when a signal ended it.", "type": ["integer", "null"] },
+						"signal": { "description": "The name of the signal that ended the process, or null when none did.", "type": ["string", "null"] }
+					},
+					"required": ["pid", "exitCode", "signal"]
+				},
+				{
+					"description": "A connection to a named pipe found every instance busy, and the connector will try again.",
+					"properties": {
+						"event": { "const": "pipe_busy" },
+						"level": { "const": "debug" },
+						"attempt": { "description": "How many times the connection has found the pipe busy.", "type": "integer", "minimum": 1 }
+					},
+					"required": ["attempt"]
+				},
+				{
+					"description": "The connector sent a request again after its connection dropped.",
+					"properties": {
+						"event": { "const": "request_retried" },
+						"level": { "const": "info" },
+						"method": { "description": "The request's method.", "type": "string" },
+						"path": { "description": "The request's path, without its query.", "type": "string" }
+					},
+					"required": ["method", "path"]
+				},
+				{
+					"description": "An optional native piece of the connector is missing on this platform, so a feature that needs it is unavailable.",
+					"properties": {
+						"event": { "const": "native_unavailable" },
+						"level": { "const": "warning" },
+						"feature": { "description": "The feature that is unavailable.", "type": "string" }
+					},
+					"required": ["feature"]
+				},
+				{
+					"description": "A line a spawned backend wrote to an output the connector forwards to its log.",
+					"properties": {
+						"event": { "const": "backend_output" },
+						"level": { "const": "info" },
+						"stream": { "description": "The stream the backend wrote the line to.", "enum": ["stdout", "stderr"] },
+						"line": { "description": "The line, without its line ending.", "type": "string" }
+					},
+					"required": ["stream", "line"]
+				},
+				{
+					"description": "The connector dropped output a spawned backend wrote, since its destination fell behind.",
+					"properties": {
+						"event": { "const": "output_dropped" },
+						"level": { "const": "warning" },
+						"stream": { "description": "The stream the output was written to.", "enum": ["stdout", "stderr"] },
+						"bytes": { "description": "How many bytes the connector dropped.", "type": "integer", "minimum": 1 }
+					},
+					"required": ["stream", "bytes"]
+				}
+			]
+		},
+		"seconds": {
+			"title": "seconds",
+			"description": "A duration in seconds, greater than zero. Each language takes it in its own form for durations.",
+			"type": "number",
+			"exclusiveMinimum": 0
+		},
+		"whole_seconds_or_never": {
+			"title": "whole seconds or never",
+			"description": "A duration in whole seconds, or the word never, as the protocol's environment variables for graces and TTL take it.",
+			"anyOf": [{ "type": "integer", "minimum": 0 }, { "const": "never" }]
+		},
+		"output": {
+			"description": "Where a spawned backend's output goes: forwarded to the connector's log, discarded, or to the client's own. A sink the app supplies is also accepted, in its language's form.",
+			"enum": ["log", "discard", "inherit"]
+		},
+		"lost_reason": {
+			"description": "Why a Backend was lost.",
+			"oneOf": [
+				{ "const": "shutdown", "description": "The lease ended with the end reason shutdown, since the backend is stopping." },
+				{ "const": "revoked", "description": "The lease ended with the end reason revoked, since the app refused this client." },
+				{ "const": "exited", "description": "A backend the connector spawned exited, and the connector doesn't respawn it." },
+				{ "const": "unavailable", "description": "No backend became ready while the connector reconnected or respawned, or the attempt failed with an error." },
+				{ "const": "respawn_limit", "description": "The backend the connector spawned kept exiting, and respawn reached its limit." }
+			]
+		},
+		"client_id": {
+			"title": "client ID",
+			"description": "A client ID the server gave, which a client treats as opaque.",
+			"type": "string",
+			"minLength": 1
+		},
+		"protocol_versions": {
+			"description": "Protocol versions, in increasing order.",
+			"type": "array",
+			"items": { "type": "integer", "minimum": 1 },
+			"minItems": 1
+		},
+		"validation_failure": {
+			"title": "validation failure",
+			"description": "One failure in a FastAPI validation error, with where the failing value is, the failure in words, and its type. A client ignores a property it doesn't know.",
+			"type": "object",
+			"properties": {
+				"loc": {
+					"description": "Where the failing value is, such as the body, then each key and index down to it.",
+					"type": "array",
+					"items": { "type": ["string", "integer"] }
+				},
+				"msg": { "description": "The failure, in words.", "type": "string" },
+				"type": { "description": "The failure's type, as Pydantic names it.", "type": "string" }
+			},
+			"required": ["loc", "msg", "type"]
+		}
+	},
+	"x-constants": {
+		"hello_poll_initial": {
+			"seconds": 0.01,
+			"description": "How long a connector waits after its first hello request fails before it sends the next. The wait doubles after each failure."
+		},
+		"hello_poll_maximum": {
+			"seconds": 0.2,
+			"description": "The longest a connector waits between hello requests."
+		},
+		"stderr_tail": {
+			"bytes": 16384,
+			"description": "How much of a spawned backend's stderr the stderr tail keeps: its last bytes."
+		},
+		"output_line_maximum": {
+			"bytes": 16384,
+			"description": "The longest piece of a line a connector forwards to its log as one record."
+		},
+		"output_queue_maximum": {
+			"bytes": 1048576,
+			"description": "How much of each output stream a connector holds for a destination that falls behind before it drops more."
+		},
+		"output_end_wait": {
+			"seconds": 1,
+			"description": "How long a connector reads a spawned backend's output after the backend exits, waiting for the end of each stream."
+		},
+		"sse_retry_default": {
+			"seconds": 3,
+			"description": "How long the SSE helper waits before it resumes a stream that set no reconnection time, as a browser's EventSource waits a few seconds."
+		}
+	}
+}

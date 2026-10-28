@@ -1,0 +1,158 @@
+{
+	"$schema": "vectors.schema.json",
+	"kind": "hello_proof",
+	"description": "The proof a server sends in its hello, from the token, the client's nonce and the server's PID. Each invalid proof is well formed but computed from the mistaken input its flag names.",
+	"notes": {
+		"GeneratedToken": "The token is 32 random bytes encoded as base64url, as a generated token is, and its key is still its text.",
+		"UserToken": "The token is one a user gave, in ASCII with spaces and punctuation.",
+		"MultiByteToken": "The token holds 2-, 3- and 4-byte UTF-8 characters, so a key made from anything but its UTF-8 bytes differs.",
+		"PidRange": "The PID is 0 or 4294967295, an end of the unsigned 32-bit range.",
+		"WrongLabel": "The proof was computed with the enrollment label in place of the hello label.",
+		"MissingSeparator": "The proof was computed without the 0x00 byte after the label.",
+		"PidLittleEndian": "The proof was computed with the PID's 4 bytes little-endian.",
+		"PidAsText": "The proof was computed with the PID as ASCII decimal digits in place of its 4 bytes.",
+		"NonceAsText": "The proof was computed with the nonce's 43 base64url characters in place of the 32 bytes they decode to.",
+		"DecodedTokenKey": "The proof was computed with the bytes a generated token decodes to as the key, in place of its UTF-8 text.",
+		"RelayedProof": "The proof was computed with otherPid in place of the case's PID, as a proof relayed from another server process is.",
+		"UntrimmedToken": "The token starts and ends with spaces, which are part of its text and so of the key.",
+		"TrimmedTokenKey": "The proof was computed with the token's leading and trailing spaces trimmed from the key."
+	},
+	"tests": [
+		{
+			"tcId": 1,
+			"comment": "A generated token.",
+			"flags": ["GeneratedToken"],
+			"token": "4XHfQAW9Y6iLp0unkxHphGaLgcYOLi4xlUMGLWcNJT8",
+			"nonce": "rxwmrRTOSd5EM-f_t8yuEVuT8RD15nW8KuUWL3Gspxg",
+			"pid": 4242,
+			"message": "706970656170692d68656c6c6f2d763100af1c26ad14ce49de4433e7ffb7ccae115b93f110f5e675bc2ae5162f71aca71800001092",
+			"proof": "xUnsfTNXxXTbLNBtz5ELkrhMLa8eo7yNnZAJxkoa2Co",
+			"result": "valid"
+		},
+		{
+			"tcId": 2,
+			"comment": "A token the user gave, with spaces and punctuation, and PID 1.",
+			"flags": ["UserToken"],
+			"token": "correct horse battery staple, \"quoted\" & {braced} \\ 100%!",
+			"nonce": "rqrDagBeXVfEZdEyeANjymcz6ZmVO52gD28HLaubX_U",
+			"pid": 1,
+			"message": "706970656170692d68656c6c6f2d763100aeaac36a005e5d57c465d132780363ca6733e999953b9da00f6f072dab9b5ff500000001",
+			"proof": "F0QmAaaMl2DAoxSPG6D3IAxIUvQcHprvdqpjD2Xw098",
+			"result": "valid"
+		},
+		{
+			"tcId": 3,
+			"comment": "A token with multi-byte UTF-8 characters, and PID 0.",
+			"flags": ["MultiByteToken", "PidRange"],
+			"token": "Grüße aus 東京 🔑",
+			"nonce": "8JaaZx3z-Rre1mbp2dMZHiEFlEtt_C4W2te7GMfum-k",
+			"pid": 0,
+			"message": "706970656170692d68656c6c6f2d763100f0969a671df3f91aded666e9d9d3191e2105944b6dfc2e16dad7bb18c7ee9be900000000",
+			"proof": "5qVQdzY1iREth5uYvueYVXqIMO8TiQZ91AtRITA8lNQ",
+			"result": "valid"
+		},
+		{
+			"tcId": 4,
+			"comment": "A generated token, and the largest PID.",
+			"flags": ["GeneratedToken", "PidRange"],
+			"token": "BDvy1bmBSdG5v_yvjlP7zT2DHWkFD1fgbFj5IeBDEBs",
+			"nonce": "B8JhlsIzkYpxIINQg8x0oEcv2shLCmajB9Vsh53jj4g",
+			"pid": 4294967295,
+			"message": "706970656170692d68656c6c6f2d76310007c26196c233918a7120835083cc74a0472fdac84b0a66a307d56c879de38f88ffffffff",
+			"proof": "bdyrWh-lG0-kex07HDdEsG21IMAUIw197kIBwLkDh68",
+			"result": "valid"
+		},
+		{
+			"tcId": 5,
+			"comment": "The enrollment label in place of the hello label.",
+			"flags": ["WrongLabel"],
+			"token": "01jdwqE1nsmZNE32qIJePdhbUZX7cIX2kuEUSQkxL6k",
+			"nonce": "8L4-_nnDOa-x_N4Vd75_nvrnhU-PdwGhGITubuzaLLQ",
+			"pid": 4242,
+			"proof": "S14E1LTq1KU0lXE2xMOQvg_lXWHKMYwQ0LT6IqP0oKM",
+			"result": "invalid"
+		},
+		{
+			"tcId": 6,
+			"comment": "No 0x00 byte after the label.",
+			"flags": ["MissingSeparator"],
+			"token": "01jdwqE1nsmZNE32qIJePdhbUZX7cIX2kuEUSQkxL6k",
+			"nonce": "8L4-_nnDOa-x_N4Vd75_nvrnhU-PdwGhGITubuzaLLQ",
+			"pid": 4242,
+			"proof": "fkgf6gdX-FQqr4VdHbQgvZaLvq1N96j4GPlUCOpuS3E",
+			"result": "invalid"
+		},
+		{
+			"tcId": 7,
+			"comment": "The PID little-endian.",
+			"flags": ["PidLittleEndian"],
+			"token": "01jdwqE1nsmZNE32qIJePdhbUZX7cIX2kuEUSQkxL6k",
+			"nonce": "8L4-_nnDOa-x_N4Vd75_nvrnhU-PdwGhGITubuzaLLQ",
+			"pid": 4242,
+			"proof": "auXNO8xOMK8Xg_vY6v9W4r3lDGw-hc7zfizzF_WkqXE",
+			"result": "invalid"
+		},
+		{
+			"tcId": 8,
+			"comment": "The PID as ASCII decimal.",
+			"flags": ["PidAsText"],
+			"token": "01jdwqE1nsmZNE32qIJePdhbUZX7cIX2kuEUSQkxL6k",
+			"nonce": "8L4-_nnDOa-x_N4Vd75_nvrnhU-PdwGhGITubuzaLLQ",
+			"pid": 4242,
+			"proof": "Fk2_9mVCBuskSMshNktqE1PYRjKKp8XjQTluJWi-BQc",
+			"result": "invalid"
+		},
+		{
+			"tcId": 9,
+			"comment": "The nonce's base64url text in place of its bytes.",
+			"flags": ["NonceAsText"],
+			"token": "01jdwqE1nsmZNE32qIJePdhbUZX7cIX2kuEUSQkxL6k",
+			"nonce": "8L4-_nnDOa-x_N4Vd75_nvrnhU-PdwGhGITubuzaLLQ",
+			"pid": 4242,
+			"proof": "jVQSi__JK7yIxHXi37WQuJYjEa07q7TzH0BLvXxuRAY",
+			"result": "invalid"
+		},
+		{
+			"tcId": 10,
+			"comment": "The generated token base64url-decoded as the key.",
+			"flags": ["DecodedTokenKey"],
+			"token": "01jdwqE1nsmZNE32qIJePdhbUZX7cIX2kuEUSQkxL6k",
+			"nonce": "8L4-_nnDOa-x_N4Vd75_nvrnhU-PdwGhGITubuzaLLQ",
+			"pid": 4242,
+			"proof": "xEVO_ZcyxY0Y9qTxJJcrARoVSfkY7lHGzqu0VZKfkQw",
+			"result": "invalid"
+		},
+		{
+			"tcId": 11,
+			"comment": "A proof for PID 4243, relayed to a client that reached PID 4242.",
+			"flags": ["RelayedProof"],
+			"token": "01jdwqE1nsmZNE32qIJePdhbUZX7cIX2kuEUSQkxL6k",
+			"nonce": "8L4-_nnDOa-x_N4Vd75_nvrnhU-PdwGhGITubuzaLLQ",
+			"pid": 4242,
+			"otherPid": 4243,
+			"proof": "dSuQqIElJqSGvp4VKvEbPkp20wIXwmfa_pype6BSf-Y",
+			"result": "invalid"
+		},
+		{
+			"tcId": 12,
+			"comment": "A token the user gave that starts and ends with spaces.",
+			"flags": ["UntrimmedToken"],
+			"token": "  correct horse battery staple ",
+			"nonce": "aniiV6qYiMN2_Bya9o36DT7SLeS-me_KPGOIvOS4hSo",
+			"pid": 4242,
+			"message": "706970656170692d68656c6c6f2d7631006a78a257aa9888c376fc1c9af68dfa0d3ed22de4be99efca3c6388bce4b8852a00001092",
+			"proof": "CX_ZzHAl3LaT594Ez5iLs9oTA5YRaPP9u9AfOAVPscw",
+			"result": "valid"
+		},
+		{
+			"tcId": 13,
+			"comment": "The same token with its spaces trimmed from the key.",
+			"flags": ["TrimmedTokenKey"],
+			"token": "  correct horse battery staple ",
+			"nonce": "aniiV6qYiMN2_Bya9o36DT7SLeS-me_KPGOIvOS4hSo",
+			"pid": 4242,
+			"proof": "3niletIZ0YvONWnlNk3eSMDVSiyolYLpyYv_cF40IdA",
+			"result": "invalid"
+		}
+	]
+}

@@ -23,18 +23,39 @@ The site's URL is `siteUrl` in `docs/astro.config.mjs`, from which Astro takes t
 
 ## How the contract renders
 
-The site reads the protocol's contract from `protocol/` as it builds, and no page restates it. [protocol/README.md](../../protocol/README.md) says which file owns what and how to change the contract. On the site's side:
+The site reads the protocol's contract and the connector API from `protocol/` as it builds, and no page restates them. [protocol/README.md](../../protocol/README.md) says which file owns what and how to change the contract. On the site's side:
 
-- `docs/src/protocol.ts` lists the protocol versions the site renders, which of them are drafts, and the contract files it reads from each version's directory.
-- `docs/src/content.config.ts` defines a content collection for each section of a version's `registry.yaml`, such as `v1EnvironmentVariables` and `v1Constants`, and one that holds its `openapi.yaml` as text, `v1OpenApiSource`. Their loaders, in `docs/src/loaders/`, wrap Astro's `file()` loader, which reads files from outside the site and, under `just docs::dev`, reloads them as they change.
-- A registry collection's entry type is generated from `registry.schema.json` as Astro syncs. `just lint` validates the data against the same schema, so the site declares no shape of its own.
-- The components in `docs/src/components/protocol/` render each registry section as a table sorted by name, and the OpenAPI document in full with a link to it on GitHub. The version's page, an MDX page in `reference/`, uses them, such as `<EnvironmentVariableTable version="v1" />`.
+- `docs/src/protocol.ts` lists the protocol versions the site renders, which of them are drafts, the contract files it reads from each version's directory, and the slugs of each version's pages, and names the connector API's file, the slug of its page and its status, draft or released.
+- `docs/src/content.config.ts` defines two content collections for each version, and one for the connector API. `v1Registry` holds the version's `registry.yaml`, with an entry for each section. `v1OpenApi` holds its `openapi.yaml`: the document's text, and an index of its reserved routes and headers. `connectorApi` holds an index of the connector API's file, `connector-api.schema.json`: for each section of the connector API's page (its options, request options, lifecycle events, reasons for a lost `Backend`, errors, log events and constants), each name in the file's order, with what its table shows of it. Their loaders, in `docs/src/loaders/`, wrap Astro's `file()` loader, which reads files from outside the site and, under `just docs::dev`, reloads them as they change.
+- The registry collection's entry type is generated from `registry.schema.json` as Astro syncs, and `just lint` validates the data against the same schema, so the site declares no shape of the registry's. The OpenAPI index is the site's own view of the document, so its loader declares that view's shape; it finds every header among the document's components, where `protocol/README.md` says each one goes. The connector API's index is the site's own view of its file too, which `just lint` validates against its meta-schema. Its loader describes each type in words, such as `array of string`, from the JSON Schema, and fails on a form of schema it doesn't know rather than describe it wrongly.
+- The components in `docs/src/components/protocol/` render the files, and the version's page and the connector API's page, MDX pages in `reference/`, use them:
+  - `RegistryTable` renders any registry section, such as `<RegistryTable version="v1" section="rejections" />`, as a table sorted by name, with numeric names in numeric order. Its columns are the name, each other field under its key, and the description; an entry without a field another entry has leaves that cell empty. A section with no entries renders as a sentence saying so.
+  - `HeaderTable` and `RouteTable` list the OpenAPI document's headers and reserved routes, in the document's order, and `OpenApiSource` shows the document in full with a link to it on GitHub.
+  - `ConnectorApiTable` renders a section of the connector API, such as `<ConnectorApiTable section="errors" />`, in the file's order. Its columns are the name, what the section's entries have of an option's type, default and environment variable, a log event's level, a constant's value and a union member's fields, and the description. An options table takes the protocol version whose environment variables it links, as `version="v1"`, and fails the build on a variable that version's registry doesn't hold.
+  - `ContractLink` links a file or a directory under `protocol/` on GitHub, such as `<ContractLink path="protocol/v1/vectors/" />`, showing its path, or the text it wraps. It fails the build when the repository has no such file or directory, so a page links a file in `protocol/` only through it.
+  - `Cite` names one name inline. The next section says how.
 - The starlight-openapi plugin, set up in `docs/astro.config.mjs`, generates a page for each reserved route under the version's page and adds them to the Reference sidebar. It renders OpenAPI 3.1 and leaves out what only 3.2 adds, such as a stream's `itemSchema`, so the version's page also includes the document in full.
-- A route middleware, `docs/src/routeData.ts`, gives a draft version's page, and the route pages under it, a draft banner.
+- A route middleware, `docs/src/routeData.ts`, gives a draft version's page, and the route pages under it, a draft banner, and the connector API's page too while its status is draft.
 
-A new registry section needs a collection in `docs/src/content.config.ts` and a component in `docs/src/components/protocol/` that renders it, which the version's page then uses. A new protocol version adds its name to `docs/src/protocol.ts`, its collections to `docs/src/content.config.ts` and its page to `reference/`.
+A new registry section needs only a `RegistryTable` on the version's page. A new kind of name in the connector API needs a section in its loader's index, then a `ConnectorApiTable` on its page. A new protocol version adds its name to `docs/src/protocol.ts`, its collections to `docs/src/content.config.ts` and its page to `reference/`.
 
-When a contract file fails [the checks](#checks), the error names only the file: the loader sends the parser's reason to debug output, and `just lint`'s schema check shows the cause of a registry that doesn't parse or doesn't match its schema.
+### Citing a name
+
+A page names a protocol name, or a name the connector API defines, through `<Cite name="..." />`, never by writing it out, so every name a page uses comes from the contract's files. `Cite` looks the name up by its form and fails the build, naming it, when the files don't hold it:
+
+| Form | Looked up in |
+| --- | --- |
+| Starts with `PIPEAPI_` | The registry's environment variables |
+| Starts with `/` | The OpenAPI document's routes |
+| Any other name | The OpenAPI document's headers, ignoring case |
+| Any name, with `section` | That section of the registry, such as `<Cite name="draining" section="rejections" />` |
+| Any name, with `connectorApi` | That section of the connector API, such as `<Cite name="envPrefix" connectorApi="options" />` |
+
+It renders the name as its file spells it, or a constant's value in place of its name, and links it to the row that defines it on the version's page, or to a route's own page. On a version's own pages, it reads that version's files; any other page passes the version too, as `version="v1"`, after `name`. A connector API name links to its row on the connector API's page, from any page, and takes no version.
+
+Astro doesn't type an MDX page's props, so these checks happen as the page renders. The `protocol-names` hook in `.pre-commit-config.yaml`, which `just lint` runs, covers what `Cite` can't see: it fails on any `PIPEAPI_` variable, `X-PipeAPI-` header or reserved route written in a page under `docs/src/content/docs/` anywhere but directly after `<Cite name="`. An example in a page therefore can't hold those names; render it from the files, or leave it out. The connector API's names have no such hook: many of them are ordinary words, such as `name` or `command`, which a pattern can't tell from prose, so review holds a page to citing them.
+
+When a contract file fails [the checks](#checks), the error names only the file: the loader sends the parser's reason to debug output, and `just lint`'s schema check shows the cause of a registry that doesn't parse or doesn't match its schema, as vacuum does for an OpenAPI document.
 
 ## Checks
 
@@ -54,6 +75,14 @@ When a contract file fails [the checks](#checks), the error names only the file:
 CI runs `just lint` and `just docs::check` on every pull request, on Windows, Linux and macOS, since contributors build the site on each. On Linux it also keeps the built site as the run's `site` artifact for 7 days, which is the pull request's preview.
 
 The Links workflow, `.github/workflows/links.yml`, runs both online checks every Monday at 06:00 America/Denver, and whenever it's dispatched from the Actions tab. Each run checks every link afresh, with the job's read-only token. When it fails, it opens an issue titled "Broken links in the documentation", labeled `area: docs`, or comments on the one already open. Each report links the run, whose log shows every broken link. The workflow never closes the issue: close it once the links are fixed and a dispatched run passes.
+
+## Publishing
+
+The Pages workflow, `.github/workflows/pages.yml`, publishes the site on every push to `main`, and whenever it's dispatched from the Actions tab. Its first job runs `just docs::check`, the recipe CI runs on every pull request, and uploads the built site; its second deploys that build to GitHub Pages through the `github-pages` environment, which deploys only from `main`. So the published site is always a build that passed the docs check.
+
+- Runs queue rather than overlap, and a newer run replaces one still waiting, so an older build never replaces a newer one.
+- The build restores no cache, since a pull request's run can write one and this build goes live.
+- Only the deploy job holds the tokens that publish, so the code the build runs never sees them.
 
 ## Why it's built this way
 

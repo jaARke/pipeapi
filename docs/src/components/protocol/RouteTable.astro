@@ -1,0 +1,36 @@
+---
+import { protocolRouteSlug, type ProtocolVersion } from '../../protocol';
+import { openApiDocument, pageHref } from './contract';
+
+interface Props {
+	readonly version: ProtocolVersion;
+}
+
+const { version } = Astro.props;
+const { routes } = await openApiDocument(version);
+---
+
+<table>
+	<thead>
+		<tr>
+			<th>Route</th>
+			<th>Method</th>
+			<th>Description</th>
+		</tr>
+	</thead>
+	<tbody>
+		{routes.map(({ path, method, operationId, description }) => (
+			<tr>
+				<td>
+					<a href={pageHref(protocolRouteSlug(version, operationId))}>
+						<code>{path}</code>
+					</a>
+				</td>
+				<td>
+					<code>{method}</code>
+				</td>
+				<td>{description}</td>
+			</tr>
+		))}
+	</tbody>
+</table>

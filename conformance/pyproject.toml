@@ -19,10 +19,17 @@ dependencies = [
 dev = [
     # Starlette's test client, and the tests' client of the app under uvicorn.
     "httpx2>=2.15.1",
+    # Validates examples in the protocol's files against their schemas.
+    "jsonschema>=4.26.0",
     # The nodejs extra locks the Node runtime the wrapper runs pyright's bundled engine on.
     "pyright[nodejs]>=1.1.414",
     "pytest>=9.1.1",
+    # Reads the protocol's OpenAPI documents.
+    "pyyaml>=6.0.3",
     "ruff>=0.17.1",
+    # Types for jsonschema and PyYAML, which ship none.
+    "types-jsonschema>=4.26.0.20261006",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [tool.uv]

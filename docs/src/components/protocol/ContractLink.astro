@@ -1,0 +1,17 @@
+---
+import { checkedContractLink } from './contract';
+
+interface Props {
+	/**
+	 * The path of a file or a directory under `protocol/`, from the repository's root, such as
+	 * `protocol/v1/vectors/`. A directory's path ends in a slash. The build fails when the
+	 * repository has no such file or directory.
+	 */
+	readonly path: string;
+}
+
+const { path } = Astro.props;
+const href = checkedContractLink(path);
+---
+
+<a href={href}>{Astro.slots.has('default') ? <slot /> : <code>{path}</code>}</a>

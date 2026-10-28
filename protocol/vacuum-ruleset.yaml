@@ -5,6 +5,9 @@ rules:
   # The reserved prefix /__pipeapi/ is part of the protocol, chosen so it can't collide with an
   # app's own routes.
   paths-kebab-case: off
-  # Not every schema needs an example. oas3-valid-schema-example still validates every example
-  # the document gives.
+  # The protocol's JSON property names are snake_case, as the registry's names are.
+  camel-case-properties: off
+  # vacuum asks for examples unevenly: on one property of the hello and on nothing under a
+  # stream's itemSchema. oas3-valid-schema-example still validates each example's value, though
+  # not OpenAPI 3.2's dataValue or serializedValue.
   oas3-missing-example: off

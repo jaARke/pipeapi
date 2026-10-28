@@ -1,0 +1,66 @@
+name: Pages
+
+# Publishes the guide site from main, built by the same recipe CI runs on every pull request.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+# Runs on one branch queue rather than overlap, and a newer run replaces one still queued, so an
+# older run never deploys over a newer one; a run dispatched from another branch can't displace
+# main's.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    # No step restores a cache: a pull request can write one, and this job's output is deployed.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          # settings.just's minimum-version, so CI proves the stated minimum.
+          just-version: 1.56.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: docs/.node-version
+          package-manager-cache: false
+      - name: Check and build the site
+        run: just docs::check
+      - name: Upload the built site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/dist/
+
+  # A job of its own, so the code the build runs never holds the tokens that deploy.
+  deploy:
+    name: Deploy the site
+    needs: build
+    # A run dispatched from another branch only builds, since the environment would refuse it.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      pages: write # to deploy the built site
+      id-token: write # to prove to Pages that this run deploys it
+    # The environment's protection rule deploys only from main.
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy the built site
+        id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

@@ -1,0 +1,16 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Rendezvous file",
+	"description": "The file in which a server on loopback with a generated port writes the port it bound, encoded as UTF-8. A client ignores a property it doesn't know.",
+	"type": "object",
+	"properties": {
+		"port": {
+			"description": "The TCP port the server bound on the loopback address of its endpoint.",
+			"type": "integer",
+			"minimum": 1,
+			"maximum": 65535
+		}
+	},
+	"required": ["port"],
+	"examples": [{ "port": 52731 }]
+}
