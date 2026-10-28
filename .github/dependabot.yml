@@ -33,3 +33,47 @@ updates:
         applies-to: security-updates
         patterns: ['*']
     labels: ['area: ci']
+
+  - package-ecosystem: npm
+    directory: /docs
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: America/Denver
+    # docs/.npmrc's min-release-age holds local installs to the same 7 days.
+    cooldown:
+      default-days: 7
+    groups:
+      # Starlight and its plugins require a matching Astro, so Astro's packages move together.
+      astro:
+        patterns: [astro, '@astrojs/*', 'starlight-*']
+      # Likewise ESLint's plugins and configs, and Prettier's plugins.
+      eslint:
+        patterns: [eslint, '@eslint/*', 'eslint-plugin-*', typescript-eslint]
+      prettier:
+        patterns: [prettier, 'prettier-plugin-*']
+      npm:
+        update-types: [minor, patch]
+      security:
+        applies-to: security-updates
+        patterns: ['*']
+    labels: ['area: docs']
+
+  - package-ecosystem: uv
+    directory: /conformance
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: America/Denver
+    # conformance/pyproject.toml's exclude-newer holds local locks to the same 7 days.
+    cooldown:
+      default-days: 7
+    groups:
+      uv:
+        update-types: [minor, patch]
+      security:
+        applies-to: security-updates
+        patterns: ['*']
+    labels: ['area: protocol']

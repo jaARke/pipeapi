@@ -1,0 +1,41 @@
+import "../settings.just"
+
+# Keep this version equal to the lychee hooks' in .pre-commit-config.yaml.
+lychee := "uvx --from lychee-bin@0.24.2 lychee --no-progress --include-fragments"
+
+# The validator in astro.config.mjs checks the links pages write, while the header, sidebar and
+# components put theirs only in the built HTML, so lychee checks that too. The remap and the
+# exclusion hold siteUrl from astro.config.mjs: links start with its path, which maps onto dist/,
+# and the site's own pages are checked there rather than online.
+built-site := "--no-ignore --index-files index.html --root-dir '" + module_directory() + "' --remap '^(file:///.*/docs)/pipeapi(/.*)?$ $1/dist$2' --exclude '^https://jaarke\\.github\\.io/pipeapi/' -- dist"
+
+# Check the site: formatting, lint, types, frontmatter, a build with no warning from Astro's logger, and internal links.
+check: clean-install
+    npm run lint:format
+    npm run lint:code
+    npm run build
+    {{ lychee }} --offline {{ built-site }}
+
+# Apply ESLint's fixes and Prettier's formatting.
+fix: install
+    npm run fix:code
+    npm run format
+
+# Serve the site locally, reloading pages as their sources change.
+dev: install
+    npm run dev
+
+# Check the links in the built site online, external ones included.
+external-links: clean-install
+    npm run build
+    {{ lychee }} {{ built-site }}
+
+# Install exactly what package-lock.json records into an empty node_modules, as CI does.
+[private]
+clean-install:
+    npm ci
+
+# Install what package-lock.json records, leaving node_modules alone when it already matches.
+[private]
+install:
+    npm install

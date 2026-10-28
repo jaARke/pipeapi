@@ -1,0 +1,75 @@
+name: Links
+
+# External links break without any change here, so they're checked on a schedule rather than in CI.
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+      timezone: America/Denver
+  workflow_dispatch:
+
+permissions: {}
+
+# Runs queue rather than overlap, so two failing runs can't each open an issue.
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  check:
+    name: External links
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          # settings.just's minimum-version, so CI proves the stated minimum.
+          just-version: 1.56.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: docs/.node-version
+      # lychee reads GITHUB_TOKEN to check GitHub links within the API's rate limit. It is this job's
+      # read-only token (contents: read), so the install and build these steps also run can't write
+      # with it.
+      - name: Check the site's links
+        run: just docs::external-links
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      # Runs after a failure too, so one run reports every broken link.
+      - name: Check the Markdown's links
+        if: ${{ !cancelled() }}
+        run: just external-links
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  # A job of its own, so the code the check runs never holds the token that writes issues.
+  report:
+    name: Report broken links
+    needs: check
+    if: needs.check.result == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write # to open the broken-links issue or comment on it
+    steps:
+      - name: Open or update the broken-links issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: Broken links in the documentation
+        run: |
+          body="The scheduled link check failed. Its run shows each broken link, or what else stopped it: $RUN_URL"
+          number=$(gh issue list --label 'area: docs' --state open --limit 100 --json number,title \
+            --jq '[.[] | select(.title == env.TITLE)][0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$TITLE" --label 'area: docs' --body "$body"
+          fi

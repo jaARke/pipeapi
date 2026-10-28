@@ -1,0 +1,10 @@
+{
+	"recommendations": [
+		"astro-build.astro-vscode",
+		"unifiedjs.vscode-mdx",
+		// Lints as `just docs::check` does, and applies the fixes on save
+		"dbaeumer.vscode-eslint",
+		// Formats with the site's Prettier and its Astro plugin
+		"esbenp.prettier-vscode"
+	]
+}

@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{ "name": "pipeapi", "path": "." },
+		// Each project is a folder of its own, so its own settings and recommendations apply; for a
+		// Python project, Pylance also reads that project's pyproject.toml
+		{ "name": "conformance", "path": "conformance" },
+		{ "name": "docs", "path": "docs" }
+	],
+	"settings": {
+		// TypeScript: use the site's compiler, so the editor reports what `astro check` does. These
+		// are window settings, which docs/.vscode/settings.json can't set in this workspace; a path
+		// that starts with a folder's name resolves inside that folder
+		"js/ts.tsdk.path": "docs/node_modules/typescript/lib",
+		"js/ts.tsdk.promptToUseWorkspaceVersion": true
+	}
+}

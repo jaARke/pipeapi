@@ -1,0 +1,10 @@
+# The rules vacuum applies to each protocol version's openapi.yaml, run by the vacuum hook in
+# .pre-commit-config.yaml, which fails on any finding.
+extends: [[vacuum:oas, recommended]]
+rules:
+  # The reserved prefix /__pipeapi/ is part of the protocol, chosen so it can't collide with an
+  # app's own routes.
+  paths-kebab-case: off
+  # Not every schema needs an example. oas3-valid-schema-example still validates every example
+  # the document gives.
+  oas3-missing-example: off

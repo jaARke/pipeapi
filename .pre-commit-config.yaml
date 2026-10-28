@@ -7,12 +7,59 @@ repos:
         # make results differ by machine; run steps call named commands, so little is lost.
         args: [-shellcheck=, -pyflakes=]
 
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: c92afdf2c6ca336aaa8f39e2bd8d48f62dbd8e1f # frozen: v1.31.1
+    hooks:
+      - id: zizmor
+        # zizmor runs online audits whenever GH_TOKEN or GITHUB_TOKEN is set, which would
+        # make results differ by shell; Dependabot's security updates cover vulnerable actions.
+        args: [--no-progress, --offline]
+
   - repo: https://github.com/python-jsonschema/check-jsonschema
     rev: 0494aa7fa1314e98913a41227d8f0a515b2c1049 # frozen: 0.38.2
     hooks:
       - id: check-dependabot
+      # registry.yaml's modeline names the same schema for editors.
+      - id: check-jsonschema
+        name: Validate protocol v1's registry against its schema
+        files: ^protocol/v1/registry\.yaml$
+        args: [--schemafile, protocol/v1/registry.schema.json]
+      - id: check-metaschema
+        name: Validate the protocol's schemas against their metaschemas
+        files: ^protocol/.+\.schema\.json$
+
+  - repo: https://github.com/daveshanley/vacuum
+    rev: 424f9daf7ebfab015a24e24e12bf269f9adeb586 # frozen: v0.33.2
+    hooks:
+      - id: vacuum
+        files: ^protocol/v\d+/openapi\.yaml$
+        # The Go toolchain prek builds the hook with. Dependabot doesn't update it, so it moves by hand.
+        language_version: 1.27.3
+        # Every finding fails, examples that violate their schema included, which vacuum reports
+        # as warnings.
+        args: [--details, --fail-severity, warn, --ruleset, protocol/vacuum-ruleset.yaml]
 
   - repo: https://github.com/editorconfig-checker/editorconfig-checker
     rev: 0adfdb012938ada0cf563a40f2fceaf9466290ca # frozen: v4.0.2
     hooks:
       - id: editorconfig-checker
+
+  # lychee's own hook runs through bash and installs cargo-binstall with an unpinned script.
+  - repo: local
+    hooks:
+      # Links and anchors in the Markdown read on GitHub; the docs check covers the site's pages.
+      - &lychee
+        id: lychee
+        name: lychee (offline)
+        entry: lychee --no-progress --include-fragments --offline
+        language: python
+        # Dependabot doesn't update local hooks; keep this equal to lychee's version in docs/justfile.
+        additional_dependencies: [lychee-bin==0.24.2]
+        types: [markdown]
+        exclude: ^docs/src/
+      # External links too, which just external-links checks on a schedule rather than on every change.
+      - <<: *lychee
+        id: lychee-online
+        name: lychee (online)
+        entry: lychee --no-progress --include-fragments
+        stages: [manual]
