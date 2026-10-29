@@ -1,0 +1,44 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Expected failures",
+	"description": "The conformance cases one connector is known to fail, in a file named expected-failures.yaml beside the connector's adapter, each by the case's ID. The list is strict: a listed case that passes fails the run, and an entry that names no connector case, or none of the case's permutations, fails the conformance project's checks.",
+	"type": "object",
+	"propertyNames": { "$ref": "cases.schema.json#/$defs/case_id" },
+	"additionalProperties": { "$ref": "#/$defs/expected_failure" },
+	"$defs": {
+		"expected_failure": {
+			"description": "The permutations of one case the connector is known to fail. Unset, transports, platforms and vias mean every one the case applies to.",
+			"type": "object",
+			"properties": {
+				"reason": {
+					"description": "Why it fails, naming the issue that tracks the fix, in one or two sentences of plain text.",
+					"type": "string",
+					"minLength": 1
+				},
+				"transports": {
+					"description": "The transports on which it fails.",
+					"type": "array",
+					"items": { "$ref": "cases.schema.json#/$defs/transport" },
+					"uniqueItems": true,
+					"minItems": 1
+				},
+				"platforms": {
+					"description": "The platforms on which it fails.",
+					"type": "array",
+					"items": { "$ref": "cases.schema.json#/$defs/platform" },
+					"uniqueItems": true,
+					"minItems": 1
+				},
+				"vias": {
+					"description": "What the requests go through on which it fails, for a case that runs once for each.",
+					"type": "array",
+					"items": { "$ref": "cases.schema.json#/$defs/via" },
+					"uniqueItems": true,
+					"minItems": 1
+				}
+			},
+			"required": ["reason"],
+			"additionalProperties": false
+		}
+	}
+}

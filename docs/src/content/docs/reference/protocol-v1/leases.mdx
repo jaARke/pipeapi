@@ -1,0 +1,54 @@
+---
+title: Leases
+description: The lease a client holds while it uses a backend, with the lease stream and its events, heartbeats, the lease TTL, how a lease ends, and lease loss.
+heading: true
+sidebar:
+  order: 5
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+import RegistryTable from '../../../../components/protocol/RegistryTable.astro';
+
+A lease is a client's request to <Cite name="/__pipeapi/lease" />, which the server holds open and answers with the lease stream. The backend runs while at least one lease is open. The OS closes a connection whose process has died, so a lease can't outlive its client, however the client exits.
+
+- A client holds one lease, from enrollment for as long as it uses the backend, and its [session](/pipeapi/reference/protocol-v1/connecting/#sessions) lasts as long as the lease.
+- A client releases its lease by closing the lease request's connection. That ends only its own use of the backend, and never stops a backend whose other clients still hold leases.
+
+## Lease stream
+
+The lease stream is `application/jsonl`: UTF-8 text with one JSON object on each line, and every line ending in LF. Its shape is the `lease_event` schema in the [OpenAPI document](/pipeapi/reference/protocol-v1/openapi-document/), and every event has a `type`.
+
+- A client MUST ignore an event whose type it doesn't know, and a property it doesn't know.
+- The server MUST send each event as soon as it has written it, without holding it in a buffer.
+
+## Lease event types
+
+<RegistryTable version="v1" section="lease_event_types" />
+
+- The server MUST send <Cite name="session" section="lease_event_types" /> first, once, as soon as enrollment succeeds. It carries the client's `client_id` and `secret`, and the lease's TTL in `lease_ttl`: a number of seconds, or null when leases have none.
+- While the lease is open, the server MUST send <Cite name="heartbeat" section="lease_event_types" /> every <Cite name="heartbeat_interval" section="durations" />.
+- When the server ends a lease itself, it MUST send <Cite name="end" section="lease_event_types" /> last, with the reason, then close the stream. A lease that the client ends, by closing its connection, gets no end event.
+
+## Heartbeats
+
+Heartbeats keep the lease stream from looking idle to a component that drops idle connections. A client MUST NOT apply a read timeout to the lease stream, and MUST NOT conclude that its lease is lost because heartbeats stop: a backend paused in a debugger sends none, yet its leases are open. A lease is lost only when its stream ends, as [lease loss](#lease-loss) says.
+
+## Lease TTL
+
+Leases have no TTL unless <Cite name="PIPEAPI_LEASE_TTL" /> sets one, since a client paused at a breakpoint, or busy with long synchronous work, looks exactly like a client that hangs. With a TTL, the server ends a lease that goes a whole TTL without a renewal, with an end event whose reason is <Cite name="expired" section="lease_end_reasons" />.
+
+- The TTL is at least <Cite name="lease_ttl_minimum" section="durations" />, and the session event gives it to the client.
+- Every request that carries the lease's session renews the lease, as the server receives it. A client with nothing else to send renews with <Cite name="/__pipeapi/renew" />, which the server answers with 204.
+- A client SHOULD renew at least every third of the TTL, so that a late renewal still arrives in time.
+
+## Lease end reasons
+
+<RegistryTable version="v1" section="lease_end_reasons" />
+
+## Lease loss
+
+A client loses its lease when the lease stream ends, whether after an end event or because the connection drops without one. Its session ends with the lease, and the server never gives that client ID again.
+
+- After <Cite name="shutdown" section="lease_end_reasons" /> or <Cite name="revoked" section="lease_end_reasons" />, the client MUST NOT reconnect on its own: the backend is stopping, or the app has refused this client.
+- After <Cite name="restart" section="lease_end_reasons" />, <Cite name="expired" section="lease_end_reasons" />, a reason the client doesn't know, or a connection that drops without an end event, the client MAY reconnect.
+- To reconnect, a client runs the [connect sequence](/pipeapi/reference/protocol-v1/connecting/#connect-sequence) again from step 1, and enrolls as a new client, with a new ID and session. The connector API says when a connector reconnects, and whether it may then spawn a backend.

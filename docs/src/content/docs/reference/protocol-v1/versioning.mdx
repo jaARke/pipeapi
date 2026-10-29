@@ -1,0 +1,41 @@
+---
+title: Versioning
+description: How a client and a server agree on a protocol version, how a version may change, its feature flags, and the protocol's versions.
+heading: true
+sidebar:
+  order: 7
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+import ContractLink from '../../../../components/protocol/ContractLink.astro';
+import RegistryTable from '../../../../components/protocol/RegistryTable.astro';
+
+## Discovery and negotiation
+
+A server advertises the protocol versions it speaks in the hello's `protocols`, and the feature flags it supports in its `features`. A client negotiates as the [connect sequence](/pipeapi/reference/protocol-v1/connecting/#connect-sequence) says: it picks the highest version both sides speak, sends it in <Cite name="X-PipeAPI-Protocol" /> on every later request, and fails, naming both sides' versions, when they have none in common. A server that speaks several versions answers each request by the version that header names, and refuses a version it doesn't speak with <Cite name="unsupported_protocol" section="rejections" />.
+
+The hello route, <Cite name="/__pipeapi/ready" />, its <Cite name="X-PipeAPI-Nonce" /> header and the hello's `protocols` are the same in every protocol version, so any client can read any server's versions before it knows which version they share. A client reads the rest of the hello by the rules of the version it picks. A server that speaks several versions answers one hello for all of them, so the hello's body changes across versions only by addition: a later version keeps every property an earlier one defines, with its meaning, and a proof computed another way arrives in a property of its own.
+
+## Compatible changes
+
+Within a protocol version, the protocol changes only by addition: an optional environment variable, header or reserved route, a JSON property, a lease event type, a lease end reason, a rejection code or a feature flag. A change that would break a client or a server built to the version's earlier rules starts a new protocol version instead. So that additions are safe, each side ignores what it doesn't know:
+
+- A server ignores an environment variable, a header or a JSON property it doesn't know.
+- A client ignores a header, a JSON property, a feature flag or a lease event type it doesn't know.
+- A client treats a lease end reason it doesn't know as a dropped connection, as [lease loss](/pipeapi/reference/protocol-v1/leases/#lease-loss) says, and a rejection code it doesn't know as it treats any rejection: the server refused the request, and the app never saw it.
+
+## Features
+
+A feature flag names a capability that a server adds within a protocol version. A client uses a flagged capability only when the hello's `features` lists the flag, and otherwise works as the version's own rules say. A server MUST NOT require a client to use a feature.
+
+<RegistryTable version="v1" section="features" />
+
+## Protocol versions
+
+A protocol version is a draft, which may still change in any way, until the release that first ships it, and a draft version's pages say so. From that release on, its files change only by addition, as [compatible changes](#compatible-changes) say, and the "Freezing" section of <ContractLink path="protocol/README.md" fragment="freezing" /> says how the repository's checks hold them to it.
+
+A breaking change starts a new protocol version, with pages and a directory of its own. A server keeps speaking the previous protocol version for at least 12 months after its first stable release that speaks the new one, and drops it only in a major release of the server, whichever comes later. A connector keeps the same window toward older servers, since with spawn or attach, whichever client arrives first chooses the server.
+
+Once the first stable server release that speaks the next version ships, a version gets a not-removed-before date in this table: the first day on which a server or a connector may stop speaking it.
+
+<RegistryTable version="v1" section="protocol_versions" />

@@ -1,0 +1,16 @@
+import "../settings.just"
+
+# List the available commands.
+default:
+    @just --list
+
+# Check the scripts as a pull request must: lint, format and types.
+check:
+    uv run --locked ruff check
+    uv run --locked ruff format --check
+    uv run --locked pyright
+
+# Apply ruff's fixes and its formatting.
+fix:
+    uv run --locked ruff check --fix
+    uv run --locked ruff format

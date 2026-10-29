@@ -1,0 +1,68 @@
+---
+title: Lifetime
+description: When and how a backend stops, the files each side removes, what stdio carries, and the statuses a server exits with.
+heading: true
+sidebar:
+  order: 6
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+import RegistryTable from '../../../../components/protocol/RegistryTable.astro';
+
+## Graces
+
+The server stops on its own when no client needs it, once a grace has passed:
+
+- **Startup grace:** when no lease has opened within the startup grace after the server starts serving, it stops. It matters only when no client enrolls after the backend starts, such as when the client that spawned it died or failed before enrolling. <Cite name="PIPEAPI_STARTUP_GRACE" /> sets the grace, and its default is <Cite name="startup_grace_default" section="durations" />.
+- **Idle grace:** when the last lease ends, the server waits for the idle grace, then stops unless a lease has opened. A grace of 0 stops it at once. <Cite name="PIPEAPI_IDLE_GRACE" /> sets the grace, and its default is <Cite name="idle_grace_default" section="durations" />.
+
+Either grace can be `never`, which is distinct from 0: the server then never stops for that reason, and runs until a shutdown request or a signal stops it, as suits a backend started by hand. No client can attach to a generated endpoint once every client that knows it is gone, so the idle grace defaults to stopping at once. A backend on an endpoint that clients share and come back to is better served by an idle grace of 10 to 60 seconds, so that a client that restarts can reconnect before the backend stops.
+
+## Stopping
+
+The server stops when a client requests <Cite name="/__pipeapi/shutdown" />, when it receives a signal to stop, or when a grace has passed. It MUST stop in this order:
+
+1. It refuses hellos and new leases, as [draining](#draining) says.
+2. It sends an end event on every open lease and closes it. The reason is <Cite name="restart" section="lease_end_reasons" /> when the backend is restarting, such as on a reload, and <Cite name="shutdown" section="lease_end_reasons" /> otherwise.
+3. It releases the endpoint:
+   - On a Unix domain socket, it closes its listener, removes its socket file and releases the lock.
+   - On loopback, it closes its listener, and on a generated port removes its rendezvous file, then the file's directory if it is then empty. Connections in TIME_WAIT can hold the port for a while after, so a new server's exclusive bind of a fixed port can still fail then.
+   - On a named pipe, it closes every instance that isn't serving a request. The pipe's name stays taken until the server's last instance closes, so the name frees when the requests in flight finish at step 4.
+4. It lets the requests in flight finish.
+5. It runs the app's lifespan shutdown.
+6. It exits with status 0.
+
+Releasing the endpoint before the lifespan shutdown lets a new server take the endpoint while the old one finishes.
+
+Any client that holds an open lease MAY request a shutdown, which stops the backend whatever leases other clients hold. The server answers it with 202, then stops.
+
+## Draining
+
+From the moment the server starts to stop, it answers every hello and every lease request with <Cite name="draining" section="rejections" />, in the order [rejections](/pipeapi/reference/protocol-v1/requests/#rejections) gives, so that no client verifies or enrolls with a backend that is going away.
+
+A client that gets <Cite name="draining" section="rejections" />, on a hello or a lease request, treats it as no backend having answered yet: it keeps running the [connect sequence](/pipeapi/reference/protocol-v1/connecting/#connect-sequence)'s steps 2 and 3, backing off, until its deadline. Once nothing accepts its connection, it spawns a backend if it may. A backend it spawns that exits with <Cite name="already_running" section="exit_codes" /> makes it try for the hello again, and it may spawn again later, within the same deadline, once nothing accepts its connection.
+
+## Generated files
+
+Each file and directory created for an endpoint has one side that removes it:
+
+- The server removes its socket file as it stops, holding the lock that the [spawn race](/pipeapi/reference/protocol-v1/connecting/#spawn-race) describes. It never removes the lock file, which another server may already hold open, or the socket's directory.
+- The server removes the rendezvous file as it stops, then the file's directory only if it is then empty. It removes nothing else there.
+- The client that generated a socket's directory or a rendezvous file's directory removes the directory, with anything left in it, once the backend it spawned has exited and it won't start another backend for that endpoint.
+- A client that another client gave its generated endpoint, token and rendezvous path, such as an Electron utility process given them by the main process, never removes them.
+- When the client that generated a directory exits first, the directory stays until the OS cleans its temporary directory.
+
+## Stdio
+
+Standard input, output and error are not part of the protocol. Neither side interprets anything a backend writes to stdout or stderr: readiness comes only from the hello, and the backend's lifecycle only from the reserved routes. What a connector does with a spawned backend's output is the connector API's to say.
+
+## Exit codes
+
+A server that stops after serving exits with status 0. A server that stops before it serves MUST exit with one of these statuses:
+
+<RegistryTable version="v1" section="exit_codes" />
+
+- The server that loses a [spawn race](/pipeapi/reference/protocol-v1/connecting/#spawn-race) exits with <Cite name="already_running" section="exit_codes" />, and its client attaches to the winner instead.
+- A server exits with <Cite name="startup_failure" section="exit_codes" /> when its environment or endpoint is invalid, its socket's directory admits other users, its bind fails for another reason, or its app fails to import or fails its lifespan startup.
+
+The statuses avoid uvicorn's own status 3, and the statuses from 126 up that a shell gives a command it can't run or one that a signal ended.

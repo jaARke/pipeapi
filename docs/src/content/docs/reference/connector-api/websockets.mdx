@@ -1,0 +1,25 @@
+---
+title: WebSockets
+description: How every connector supports WebSockets on every transport.
+heading: true
+sidebar:
+  order: 10
+---
+
+A pipeapi server accepts WebSocket connections, and every connector MUST support them on every transport it supports, through a path its documentation gives: a helper of its own, or a recipe with a WebSocket library over its primitive or `dial()`.
+
+- The opening handshake is an HTTP request, so it carries the headers every request does. A handshake without them gets a [rejection](/pipeapi/reference/protocol-v1/requests/#rejections), which is a plain 403 on an ASGI server without the WebSocket denial response extension.
+- A connector's outage handling MUST pass an upgraded connection through untouched: the body of a `101 Switching Protocols` response, which is the connection itself in Go, and the response extensions that hold the upgraded stream in Python's httpcore. A wrapper that buffers or replaces them breaks every WebSocket library built on the primitive.
+- Once upgraded, the connection is the app's. The connector never opens it again, and when it drops, the app sees the close or the error its library reports.
+
+Each connector's issue decides whether its language needs a helper:
+
+| Language | Likely path |
+| --- | --- |
+| Node ([#7](https://github.com/jaARke/pipeapi/issues/7)) | A helper that returns the address and headers to open a WebSocket with, since `ws` replaces a `socketPath` option it's given |
+| .NET ([#15](https://github.com/jaARke/pipeapi/issues/15)) | A recipe: `ClientWebSocket` with an `HttpMessageInvoker` built on the connector's handler, on .NET 7 or later |
+| Rust ([#16](https://github.com/jaARke/pipeapi/issues/16)) | A helper that builds the handshake request, over `dial()` |
+| Go ([#17](https://github.com/jaARke/pipeapi/issues/17)) | A recipe: coder/websocket over the primitive's `*http.Client` |
+| Python ([#18](https://github.com/jaARke/pipeapi/issues/18)) | A recipe: httpx-ws over the primitive |
+
+The conformance suite covers each connector on every transport with two cases: an echo round trip that carries the credentials, and a close from the server that reaches the client. A connector's own path always sends the credentials, so the suite sends the handshake without them itself, against the server, and checks that it is rejected.

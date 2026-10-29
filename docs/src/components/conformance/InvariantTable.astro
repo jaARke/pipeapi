@@ -1,0 +1,50 @@
+---
+import { conformanceCasesFilePath } from '../../conformance';
+import { caseList } from './cases';
+import CodeList from './CodeList.astro';
+import CodeText from './CodeText.astro';
+import Covers from './Covers.astro';
+
+const { invariants } = await caseList();
+---
+
+<table>
+	<thead>
+		<tr>
+			<th>Invariant</th>
+			<th>Checked</th>
+			<th>Covers</th>
+			<th>Expectation</th>
+		</tr>
+	</thead>
+	<tbody>
+		{invariants.map(({ id, title, expectation, needs, covers }) => {
+			const where = `${conformanceCasesFilePath}'s ${id}`;
+			return (
+				<tr id={id}>
+					<td>
+						<code>{id}</code>
+						<br />
+						<CodeText text={title} where={where} />
+					</td>
+					<td>
+						<ul>
+							<li>In every case</li>
+							{needs.length > 0 && (
+								<li>
+									Needs <CodeList values={needs} linksTo="components" />
+								</li>
+							)}
+						</ul>
+					</td>
+					<td>
+						<Covers covers={covers} citedBy={id} />
+					</td>
+					<td>
+						<CodeText text={expectation} where={where} />
+					</td>
+				</tr>
+			);
+		})}
+	</tbody>
+</table>

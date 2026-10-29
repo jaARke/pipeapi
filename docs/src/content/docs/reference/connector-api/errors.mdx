@@ -1,0 +1,13 @@
+---
+title: Errors
+description: The typed errors a connector raises for transport and lifecycle failures, each with its code and fields.
+heading: true
+sidebar:
+  order: 5
+---
+
+import ConnectorApiTable from '../../../../components/protocol/ConnectorApiTable.astro';
+
+A connector raises a typed error for every transport and lifecycle failure, each with a code and the fields the table lists. Each language raises them in its own idiom, such as a class for each kind, an enumeration of codes, or sentinel errors, and each connector's issue settles which. Cancellation through the language's own signal raises the language's own cancellation error, not one of these.
+
+<ConnectorApiTable section="errors" />

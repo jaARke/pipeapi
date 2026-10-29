@@ -1,0 +1,58 @@
+---
+title: Requests
+description: The Host header and proxies, the reserved routes and the headers they use, the server's rejections, and the errors pipeapi leaves to the app.
+sidebar:
+  order: 4
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+import HeaderTable from '../../../../components/protocol/HeaderTable.astro';
+import RegistryTable from '../../../../components/protocol/RegistryTable.astro';
+import RouteTable from '../../../../components/protocol/RouteTable.astro';
+
+## Host and proxies
+
+Every request MUST carry the Host header <Cite name="host" section="constants" />, on every transport. The name is never resolved: [RFC 6761](https://www.rfc-editor.org/rfc/rfc6761) keeps `.localhost` names on loopback and out of DNS.
+
+On loopback, the server MUST reject a request whose Host is not that value, without a port, with <Cite name="invalid_host" section="rejections" />, and a request that carries an `Origin` header with <Cite name="origin_forbidden" section="rejections" />. It compares the Host without regard to ASCII case, as [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-4.2.3) compares hosts. A client always sends that Host and never an `Origin` header, so these checks refuse only requests from elsewhere, such as a web page's. On pipes and sockets, the server MAY skip both checks.
+
+A client MUST NOT send requests to a backend through a proxy: it turns off system proxy settings, proxy environment variables and PAC files for every transport. A proxy receives requests in absolute form, which breaks routing down a pipe or a socket, and whether a proxy's bypass rules exclude a `.localhost` name differs by language and platform.
+
+## Reserved routes
+
+The server answers every path under <Cite name="reserved_prefix" section="constants" /> itself, so the app never sees those requests. A request for a path under it that names no route, or with a method its route doesn't take, gets <Cite name="unknown_route" section="rejections" />.
+
+The server matches a request's path after percent-decoding it, and without resolving `.` or `..` segments: a path is under the prefix when its decoded form starts with the prefix, so the prefix without its final slash isn't under it, and neither is a path that only resolves to one under it.
+
+<RouteTable version="v1" />
+
+The [reserved routes' reference](/pipeapi/reference/protocol-v1/routes/) has a page for each route, with its parameters and responses. The [OpenAPI document](/pipeapi/reference/protocol-v1/openapi-document/) has every schema in full, including the lease stream's events, which those pages leave out.
+
+## Headers
+
+These are the headers the reserved routes use, as the OpenAPI document defines them. [Host and proxies](#host-and-proxies) covers the Host and `Origin` headers. pipeapi's credentials travel in headers of its own, so `Authorization` stays free for the app.
+
+<HeaderTable version="v1" />
+
+The server removes <Cite name="X-PipeAPI-Enrollment" /> and <Cite name="X-PipeAPI-Session" /> from a request before the app sees it, and removes <Cite name="X-PipeAPI-Rejected" /> from the app's own responses, so that header only ever means pipeapi refused the request.
+
+## Rejections
+
+When the server refuses a request itself, its response carries <Cite name="X-PipeAPI-Rejected" /> with a rejection code, so a client knows the app never saw the request, and its body is empty. A 401 from the server also carries <Cite name="WWW-Authenticate" /> with the scheme <Cite name="auth_scheme" section="constants" /> and the code as its `error` parameter, since [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.2) requires a challenge on every 401. A client MUST tell the server's rejections from the app's responses by <Cite name="X-PipeAPI-Rejected" />, never by the status or the challenge alone: the app's own 401 carries no such header.
+
+<RegistryTable version="v1" section="rejections" />
+
+The server checks a request in this order, and answers with the first check that fails:
+
+1. On loopback, the Host header, then the `Origin` header.
+2. The reserved routes' own rules: the route exists and takes the method, and a hello carries a well-formed nonce.
+3. On a hello, whether the server is stopping.
+4. On every request but the hello, the protocol version.
+5. On a lease request, its enrollment; on every other request but the hello, its session.
+6. On a lease request, whether the server is stopping.
+
+A WebSocket handshake gets the same rejection as an HTTP request where the ASGI server supports the WebSocket denial response extension, and otherwise a plain 403 without a rejection code.
+
+## Errors
+
+pipeapi adds no error body of its own: a rejection carries its code in <Cite name="X-PipeAPI-Rejected" />, and its body is empty. Every other response is the app's, unchanged, such as FastAPI's `{"detail": ...}` bodies and its 422 validation errors. Failures outside HTTP, such as no backend at the endpoint, a failed verification or no protocol version in common, are a client's own errors, which the [connector API](/pipeapi/reference/connector-api/errors/) defines, and never HTTP statuses.

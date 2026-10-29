@@ -12,5 +12,6 @@ The documentation for people using pipeapi is the guide site, built from `docs/s
 - [The protocol](protocol.md): what the protocol guarantees and to whom, why it's built this way, and what was rejected.
 - [The connector API](connector-api.md): what the surface every connector offers guarantees and to whom, why it's built this way, and what was rejected.
 - [Python projects](python.md): the conventions every Python project in the repository follows, and their reasons.
-- [The conformance project](conformance.md): the reference app, and how a runner starts, observes and stops it.
+- [The conformance project](conformance/README.md): the case list and how a case is implemented, running the suite and reading its failures, adapters and adding a connector, the reference app, and the runner's design.
+- [The adapter protocol](adapter-protocol.md): how the conformance runner drives each connector through its adapter, how the protocol is framed and versioned, its limits, and why it's built this way.
 - [Pinned versions](versions.md): the versions Dependabot moves, and the ones that move by hand.

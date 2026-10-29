@@ -1,0 +1,57 @@
+---
+title: Requests
+description: The requests a connector sends for the app, the raw connections it opens, its helpers for server-sent events and validation errors, and its transports.
+heading: true
+sidebar:
+  order: 2
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+import ConnectorApiTable from '../../../../components/protocol/ConnectorApiTable.astro';
+
+The untyped request and the primitive add these headers to every request, with the values of the current lease: Host, whose value is <Cite name="host" section="constants" version="v1" />, <Cite name="X-PipeAPI-Protocol" version="v1" /> and <Cite name="X-PipeAPI-Session" version="v1" />. The primitive carries them itself, so a generated client needs to know nothing about pipeapi; its base URL is `http://` followed by the Host value. Both return every response the app sends, whatever its status: an HTTP status is never a connector's error.
+
+| Language | Untyped request and primitive | Typed client |
+| --- | --- | --- |
+| Node ([#7](https://github.com/jaARke/pipeapi/issues/7)) | `backend.fetch()`, with the signature of the WHATWG `fetch`, and `backend.clientOptions`, which holds the base URL and that `fetch`, the two options nearly every TypeScript client takes | openapi-fetch |
+| .NET ([#15](https://github.com/jaARke/pipeapi/issues/15)) | An `HttpMessageHandler` to build an `HttpClient` on | NSwag, Kiota or Refit |
+| Rust ([#16](https://github.com/jaARke/pipeapi/issues/16)) | A `reqwest::Client` | progenitor |
+| Go ([#17](https://github.com/jaARke/pipeapi/issues/17)) | An `*http.Client` | oapi-codegen |
+| Python ([#18](https://github.com/jaARke/pipeapi/issues/18)) | An `httpx.Client` or `httpx.AsyncClient` | openapi-python-client |
+
+Each connector's issue settles the names, and the untyped request where the table gives none.
+
+A request through the untyped request or the primitive takes these options, in its language's form for a request's options, such as a property of the options `fetch` takes or an httpx request extension:
+
+<ConnectorApiTable section="request_options" />
+
+## dial()
+
+`dial()` opens a raw connection to the endpoint, as a stream in its language's form, for an HTTP client the primitive doesn't cover or a protocol that takes over an upgraded connection. On a named pipe, it retries a busy pipe as every connection does.
+
+Nothing on the connection is pipeapi's: its caller MUST add to every request the headers the untyped request adds, Host, <Cite name="X-PipeAPI-Protocol" version="v1" /> and <Cite name="X-PipeAPI-Session" version="v1" />, and the `Backend` exposes their current values for it. The token never goes on the connection, since the session stands in for it. A request on a dialed connection gets none of the connector's outage handling. When the connector opens a new lease, a request with the old session gets <Cite name="invalid_session" section="rejections" version="v1" />, and the caller reads the current values and sends it again.
+
+## SSE helper
+
+The SSE helper takes a response whose content type is `text/event-stream`, from the untyped request or the primitive, and iterates its events as the [HTML standard](https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream) parses them, each with its type, its data and its ID.
+
+## ValidationError
+
+FastAPI answers a request that fails validation with a 422 whose body's `detail` lists each failure. `ValidationError` turns such a response into the error <Cite name="validation_error" connectorApi="errors" />, which holds each failure's location, message and type, and leaves a response with any other status or body as it is. Each connector's issue settles its form, such as a function that takes a response.
+
+## Transports and proxies
+
+An endpoint's scheme picks its transport, as [endpoint URLs](/pipeapi/reference/protocol-v1/endpoints/#endpoint-urls) says.
+
+- A connector rejects an endpoint whose transport its OS lacks with <Cite name="unsupported_transport" connectorApi="errors" /> when `connect()` runs, never when the app imports or compiles it. Code for one platform's transport is built only into that platform's build, and other platforms get a stub that fails with that error.
+- Every connector turns proxies off on its primitive, as [host and proxies](/pipeapi/reference/protocol-v1/requests/#host-and-proxies) requires, explicitly, since each language's default differs.
+- When an optional native piece is missing, such as a Node addon on an unsupported CPU, the connector logs <Cite name="native_unavailable" connectorApi="log_events" /> and treats the feature that needs it as unavailable. Whether `connect()` then proceeds without checking the server's PID is [#8](https://github.com/jaARke/pipeapi/issues/8)'s to settle.
+- Node's standard library can neither read the PID of the process at the other end of a named pipe or a Unix domain socket, which the connect sequence's verification checks where a client can, nor open a named pipe at identification-level impersonation, which [transport access](/pipeapi/reference/protocol-v1/endpoints/#transport-access) asks for. Whether the Node connector ([#7](https://github.com/jaARke/pipeapi/issues/7)) takes a native piece for both is [#8](https://github.com/jaARke/pipeapi/issues/8)'s to settle.
+
+| Language | Pipes and sockets | Loopback | Proxies off |
+| --- | --- | --- | --- |
+| Node | `http.request` with `socketPath`, which takes a socket's path or a pipe's | Node's TCP transport | An `http.Agent` of its own on every request, never the global one |
+| .NET | `SocketsHttpHandler.ConnectCallback`, returning a `NamedPipeClientStream` or a `Socket` on a `UnixDomainSocketEndPoint` | The handler's TCP transport | `UseProxy = false` on the handler, which otherwise uses the Windows system proxy |
+| Rust | reqwest's `ClientBuilder::unix_socket` and `windows_named_pipe` | reqwest's TCP transport | `.no_proxy()` on the `ClientBuilder` |
+| Go | An `http.Transport` whose `DialContext` dials `unix`, or go-winio's `DialPipeContext` | The standard TCP dialer | `Proxy: nil` on the `http.Transport`, whose default reads proxy environment variables |
+| Python | httpx's `uds` transport on POSIX, and on Windows an httpcore network backend that opens the pipe | httpx's TCP transport | `trust_env=False` on the httpx client |

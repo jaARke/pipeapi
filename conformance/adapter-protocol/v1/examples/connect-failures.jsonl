@@ -1,0 +1,15 @@
+{"type":"hello","adapterProtocol":1,"connector":{"name":"python","version":"0.1.0"},"pid":4242,"transports":["unix","tcp"],"capabilities":["peer_pid","typed_client"]}
+{"type":"command","id":1,"command":"connect","options":{"endpoint":"unix:///run/user/1000/demo.sock","token":"xE8-qmrfmvU1YE4Pk6GP5QD7W6cIaTbAXP145cRx_6g","leaseTtl":29}}
+{"type":"event","event":"started","id":1}
+{"type":"reply","id":1,"command":"connect","error":{"code":"invalid_option","option":"leaseTtl","message":"leaseTtl is 29, below the protocol's minimum of 30 seconds"}}
+{"type":"command","id":2,"command":"connect","options":{"endpoint":"unix:///run/user/1000/nothing.sock","token":"xE8-qmrfmvU1YE4Pk6GP5QD7W6cIaTbAXP145cRx_6g"}}
+{"type":"event","event":"started","id":2}
+{"type":"reply","id":2,"command":"connect","error":{"code":"backend_unavailable","message":"nothing accepted a connection at unix:///run/user/1000/nothing.sock, and no command was given to spawn one"}}
+{"type":"command","id":3,"command":"connect","options":{"endpoint":"npipe:////./pipe/pipeapi-demo","token":"xE8-qmrfmvU1YE4Pk6GP5QD7W6cIaTbAXP145cRx_6g"}}
+{"type":"event","event":"started","id":3}
+{"type":"reply","id":3,"command":"connect","error":{"code":"unsupported_transport","transport":"npipe","endpoint":"npipe:////./pipe/pipeapi-demo","message":"named pipes don't exist on this platform"}}
+{"type":"command","id":4,"command":"connect","options":{"endpoint":"unix:///run/user/1000/silent.sock","token":"xE8-qmrfmvU1YE4Pk6GP5QD7W6cIaTbAXP145cRx_6g","connectTimeout":30}}
+{"type":"event","event":"started","id":4}
+{"type":"command","id":5,"command":"cancel","commandId":4}
+{"type":"reply","id":5,"command":"cancel","result":{}}
+{"type":"reply","id":4,"command":"connect","languageError":{"kind":"cancellation","name":"CancelledError","message":""}}

@@ -8,7 +8,7 @@ import pytest
 
 from reference_app.routers import process
 from reference_app.routers.process import output_line
-from tests.support.server import Server, run_server
+from runner.uvicorn_server import Server, run_server
 from tests.support.targets import PROBE_VALUE, PROBE_VARIABLE, Target
 
 UNSET_VARIABLE = "REFERENCE_APP_TEST_UNSET"
@@ -41,9 +41,10 @@ def test_input_gets_eof_from_a_null_stdin(under_uvicorn: Target) -> None:
 def test_input_reads_a_line_from_a_piped_stdin(tmp_path: Path) -> None:
     with run_server(tmp_path, stdin=subprocess.PIPE) as server:
         server.wait_until_serving()
-        assert server.process.stdin is not None
-        server.process.stdin.write(b"from the pipe\n")
-        server.process.stdin.flush()
+        stdin = server.process.popen.stdin
+        assert stdin is not None
+        stdin.write(b"from the pipe\n")
+        stdin.flush()
         with server.client() as client:
             outcome = client.post("/input").json()
     assert (outcome["outcome"], outcome["line"]) == ("line", "from the pipe")

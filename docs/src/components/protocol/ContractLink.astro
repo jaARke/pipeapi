@@ -3,15 +3,20 @@ import { checkedContractLink } from './contract';
 
 interface Props {
 	/**
-	 * The path of a file or a directory under `protocol/`, from the repository's root, such as
-	 * `protocol/v1/vectors/`. A directory's path ends in a slash. The build fails when the
-	 * repository has no such file or directory.
+	 * The path of a file or a directory of the contract, under `protocol/` or `conformance/cases/`,
+	 * from the repository's root, such as `protocol/v1/vectors/`. A directory's path ends in a slash.
+	 * The build fails when the repository has no such file or directory.
 	 */
 	readonly path: string;
+	/**
+	 * An anchor in the file as GitHub shows it, such as `freezing` for a Markdown file's heading.
+	 * The built-site check in `docs/justfile` fails when the file has no such anchor.
+	 */
+	readonly fragment?: string;
 }
 
-const { path } = Astro.props;
-const href = checkedContractLink(path);
+const { path, fragment } = Astro.props;
+const href = `${checkedContractLink(path)}${fragment === undefined ? '' : `#${fragment}`}`;
 ---
 
 <a href={href}>{Astro.slots.has('default') ? <slot /> : <code>{path}</code>}</a>

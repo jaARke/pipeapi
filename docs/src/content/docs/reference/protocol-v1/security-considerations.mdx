@@ -1,0 +1,52 @@
+---
+title: Security considerations
+description: The protocol's trust boundary, the threats it mitigates and how, and the limits it can't defend against.
+heading: true
+sidebar:
+  order: 8
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+
+## Trust boundary
+
+The trust boundary is the current OS user. The protocol keeps out the network, other users and web content. It doesn't defend against a malicious process that runs unsandboxed as the same user, which can read the client's and the server's memory, environment and files, so no secret pipeapi holds is safe from it. Against processes of the same user, the protocol only limits accidents, such as a buggy or confused client, and keeps a leak small. The table says which group each mitigation targets, and claims no more.
+
+## Threats
+
+| Threat | Mitigation | Sections |
+| --- | --- | --- |
+| The network reaching the backend | A named pipe refuses remote clients, and a Unix domain socket has no network address. A loopback backend binds a loopback address only, never a wildcard address. | [Transport access](/pipeapi/reference/protocol-v1/endpoints/#transport-access), [endpoint URLs](/pipeapi/reference/protocol-v1/endpoints/#endpoint-urls) |
+| Another local user connecting | A named pipe admits the current user only, and a Unix domain socket sits in a directory only the user can access. On loopback any local user can connect, and only the token keeps them out. | [Transport access](/pipeapi/reference/protocol-v1/endpoints/#transport-access), [limits](#limits) |
+| Another process of the same user connecting by accident | A generated endpoint is unguessable, or the user configures one. A client enrolls against the token, and every request carries a session. | [Generated endpoints](/pipeapi/reference/protocol-v1/endpoints/#generated-endpoints), [enrollment](/pipeapi/reference/protocol-v1/connecting/#enrollment), [sessions](/pipeapi/reference/protocol-v1/connecting/#sessions) |
+| A process taking the endpoint first | A server creates a pipe's first instance, holds the lock file beside a socket, or binds a port exclusively, and exits when it can't. A process of the same user can still add pipe instances afterward. | [Spawn race](/pipeapi/reference/protocol-v1/connecting/#spawn-race), [limits](#limits) |
+| A rogue pipe server acting as the client | A client opens a pipe at identification-level impersonation at most, where it can. | [Transport access](/pipeapi/reference/protocol-v1/endpoints/#transport-access), [limits](#limits) |
+| The token leaking to subprocesses | The server removes its variables from its environment at startup. The process's original environment block still holds them, and processes of the same user can read it. | [Environment variables](/pipeapi/reference/protocol-v1/connecting/#environment-variables), [limits](#limits) |
+| The token leaking through the wire or logs | The token never crosses the wire, since each side proves it holds it, and neither side logs it. | [Tokens](/pipeapi/reference/protocol-v1/tokens-and-proofs/#tokens), [proofs](/pipeapi/reference/protocol-v1/tokens-and-proofs/#proofs) |
+| A session secret leaking from the wire | The secret crosses the wire only inside the transport, which admits only the user's processes on a named pipe or a Unix domain socket, and which no proxy carries. | [Transport access](/pipeapi/reference/protocol-v1/endpoints/#transport-access), [host and proxies](/pipeapi/reference/protocol-v1/requests/#host-and-proxies) |
+| The token leaking to web content | A client never passes the token to a process that runs web content. | [Tokens](/pipeapi/reference/protocol-v1/tokens-and-proofs/#tokens) |
+| A token stored with the app | A token the user gives comes from configuration the user controls, never from the app's own files. | [Tokens](/pipeapi/reference/protocol-v1/tokens-and-proofs/#tokens) |
+| A web page reaching a loopback backend, directly or through DNS rebinding | The Host header must be the fixed value without a port, and a browser sends that only to ports 80 and 443, which endpoints refuse. A request with an `Origin` header is refused, and every request needs a session. | [Host and proxies](/pipeapi/reference/protocol-v1/requests/#host-and-proxies), [ports 80 and 443](#ports-80-and-443), [sessions](/pipeapi/reference/protocol-v1/connecting/#sessions) |
+| Traffic routed through a proxy | A client turns proxies off on every transport. | [Host and proxies](/pipeapi/reference/protocol-v1/requests/#host-and-proxies) |
+| A squatter collecting the token, or relaying a client's hello to the real server | The token never crosses the wire, and a client checks the hello's proof before it enrolls. Where a client can read the server's PID, it checks the PID the proof covers, which detects a relay. | [Connect sequence](/pipeapi/reference/protocol-v1/connecting/#connect-sequence), [hello proof](/pipeapi/reference/protocol-v1/tokens-and-proofs/#hello-proof) |
+| A rendezvous file pointing clients at another port | The file's directory admits only the user, and a client enrolls only with a server whose hello proves it holds the token. | [Transport access](/pipeapi/reference/protocol-v1/endpoints/#transport-access), [connect sequence](/pipeapi/reference/protocol-v1/connecting/#connect-sequence) |
+| A replayed enrollment | A challenge is single-use, and expires a short time after its hello. | [Enrollment](/pipeapi/reference/protocol-v1/connecting/#enrollment) |
+| One client using another's ID | Each ID is bound to the secret issued with it. | [Sessions](/pipeapi/reference/protocol-v1/connecting/#sessions) |
+| A session leaking | A session serves one client, ends with its lease, and the app can revoke that client. | [Sessions](/pipeapi/reference/protocol-v1/connecting/#sessions), [lease loss](/pipeapi/reference/protocol-v1/leases/#lease-loss) |
+| The backend outliving its clients | The OS closes a dead client's lease connection, and the server stops once the last lease ends and the idle grace passes. | [Leases](/pipeapi/reference/protocol-v1/leases/), [graces](/pipeapi/reference/protocol-v1/lifetime/#graces) |
+| Spoofed lifecycle signals | The lifecycle travels only over the reserved routes, and nothing on stdio is interpreted. | [Stdio](/pipeapi/reference/protocol-v1/lifetime/#stdio), [reserved routes](/pipeapi/reference/protocol-v1/requests/#reserved-routes) |
+
+## Ports 80 and 443
+
+On loopback, the Host check rests on a browser's habit of adding the port to the Host header for any port but its scheme's default. [RFC 6761](https://www.rfc-editor.org/rfc/rfc6761#section-6.3) lets a resolver, a browser's included, answer any `.localhost` name with a loopback address, so on port 80 or 443 a web page's request could carry a Host header exactly like a client's, and the check couldn't tell them apart. Refusing both ports keeps the check sound, and the `Origin` check and the session remain behind it.
+
+## Limits
+
+The protocol can't defend against these:
+
+- **A malicious process of the same user,** running unsandboxed. It can read the token from either process's memory or original environment block, read the user's files, and add instances to a named pipe after the server created the first one, so that a client may connect to its instance rather than the server's.
+- **Other users on loopback.** Any local user, in any session, can reach a loopback port, and only the token keeps them out. Machines with several users' sessions, such as Windows terminal servers, and deployments that a security review covers SHOULD use a named pipe or a Unix domain socket instead.
+- **A relayed hello where a client can't read its peer's PID.** On loopback, and on any transport whose runtime doesn't give the client its peer's PID, a client can't detect a proof relayed from another server.
+- **A pipe opened without identification-level impersonation.** A client that can't set it leaves a rogue pipe server, which only a process of the same user can create, able to act as the client.
+- **Name collisions and squatting on configured endpoints.** On Windows, `{user}` expands alike for accounts of the same name in different domains, so their endpoints collide. Any local user can create a configured pipe name or bind a configured loopback port first, which makes the server exit with <Cite name="already_running" section="exit_codes" /> and its clients time out. Generated endpoints avoid both.
+- **Sandboxed clients.** A client sandboxed by the OS, such as in an AppContainer or at low integrity, can open a named pipe only when its security descriptor grants the sandbox access explicitly, which the protocol doesn't.

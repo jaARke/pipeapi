@@ -1,0 +1,2 @@
+# Python's bytecode; uv and ruff mark their own directories ignored
+__pycache__/

@@ -60,17 +60,25 @@ updates:
         patterns: ['*']
     labels: ['area: docs']
 
+  # Every Python project in one entry, since a group moves a package only across its entry's
+  # directories.
   - package-ecosystem: uv
-    directory: /conformance
+    directories: [/conformance, /scripts]
     schedule:
       interval: weekly
       day: monday
       time: '06:00'
       timezone: America/Denver
-    # conformance/pyproject.toml's exclude-newer holds local locks to the same 7 days.
+    # Each project's exclude-newer, in its pyproject.toml, holds local locks to the same 7 days.
     cooldown:
       default-days: 7
     groups:
+      # The packages the projects share, each moved in every project by one pull request, so
+      # ruff.base.toml and pyright.base.json move to each version of their tool together. A local
+      # upgrade or a security update can still move one project alone.
+      shared:
+        patterns: [pyright, pyyaml, ruff, types-pyyaml]
+        group-by: dependency-name
       uv:
         update-types: [minor, patch]
       security:

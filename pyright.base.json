@@ -1,0 +1,13 @@
+// Every Python project's Pyright configuration extends this file, and a key the project
+// sets replaces the one here. Pyright reads its JSON with comments; a TOML base would be
+// read only from a [tool.pyright] table, silently dropping every other key.
+{
+	// Every value has a known type, including what comes from dependencies.
+	"typeCheckingMode": "strict",
+	// An override that stops overriding fails, and @override exempts it from D102 and FBT.
+	"reportImplicitOverride": "error",
+	// The type checker's twin of RUF100: a suppression that suppresses nothing fails.
+	"reportUnnecessaryTypeIgnoreComment": "error",
+	// An import cycle fails, so the modules keep one direction.
+	"reportImportCycles": "error"
+}

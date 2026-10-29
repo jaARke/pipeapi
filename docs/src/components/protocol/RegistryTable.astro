@@ -1,6 +1,6 @@
 ---
 import type { ProtocolVersion } from '../../protocol';
-import { anchorOf, registrySection } from './contract';
+import { anchorOf, checkTablePage, protocolTablePage, registrySection } from './contract';
 
 interface Props {
 	readonly version: ProtocolVersion;
@@ -10,6 +10,11 @@ interface Props {
 
 const { version, section } = Astro.props;
 const entries = await registrySection(version, section);
+checkTablePage(
+	Astro.locals.starlightRoute.id,
+	protocolTablePage(version, section),
+	`protocol/${version}/registry.yaml's ${section}`
+);
 // Every field but the description, which the last column holds, in the order of their keys.
 const fields = [...new Set(entries.flatMap(({ fields }) => [...fields.keys()]))]
 	.filter((key) => key !== 'description')

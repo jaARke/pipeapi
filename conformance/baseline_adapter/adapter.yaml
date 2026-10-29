@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=../adapter-protocol/manifest.schema.json
+# The baseline runs in the conformance project's own environment, whose interpreter the
+# runner finds first, as uv run puts its scripts directory first on PATH.
+connector: baseline
+command: [python, -m, baseline_adapter]
+directory: ..

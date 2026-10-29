@@ -1,0 +1,56 @@
+---
+title: Respawn
+description: When a connector starts its backend again after an unexpected exit, and what its events, requests, streams and other clients see meanwhile.
+heading: true
+sidebar:
+  order: 7
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+
+A connector can start its backend again after it exits unexpectedly. Respawn is off unless the app sets <Cite name="respawn" connectorApi="options" />, since a backend that starts again has lost the app's in-memory state. It needs nothing from the protocol beyond what the connect sequence already does.
+
+## When a connector respawns
+
+A connector respawns a backend only when all of these hold:
+
+- its <Cite name="respawn" connectorApi="options" /> is true;
+- its `Backend` spawned the process that exited, in `connect()` or in an earlier respawn, so it saw the exit itself. A client that attached never respawns, since it can't see the backend's exit;
+- the process exited unexpectedly: with a status other than 0, or by a signal.
+
+A backend that stops normally, after a shutdown request, a signal it handles or a grace, sends an end event with the reason <Cite name="shutdown" section="lease_end_reasons" version="v1" /> and exits with status 0, so the connector emits <Cite name="lost" connectorApi="events" /> with the reason <Cite name="shutdown" connectorApi="lost_reasons" /> and never respawns it. A backend that exits with status 0 without an end event isn't respawned either: the connector emits <Cite name="lost" connectorApi="events" /> with the reason <Cite name="exited" connectorApi="lost_reasons" />.
+
+## Restarts
+
+- Before each restart, the connector waits: <Cite name="respawnBackoff" connectorApi="options" /> before the first, twice the last wait before each one after it, and never longer than <Cite name="respawnBackoffMaximum" connectorApi="options" />. Once a respawned backend has been ready for <Cite name="respawnBackoffReset" connectorApi="options" />, the next wait is <Cite name="respawnBackoff" connectorApi="options" /> again.
+- It makes at most <Cite name="respawnLimit" connectorApi="options" /> restarts within any period of <Cite name="respawnWindow" connectorApi="options" />. In place of a restart beyond that limit, it emits <Cite name="lost" connectorApi="events" /> with the reason <Cite name="respawn_limit" connectorApi="lost_reasons" /> and the last exit's status or signal and stderr tail.
+- A restart runs the connect sequence as `connect()` does, with the same command, arguments, working directory, environment, endpoint, token and rendezvous file. On loopback with a generated port, the connector first removes the rendezvous file the exited backend left, so that it reads only the new server's port.
+- A restart that fails with <Cite name="spawn_failed" connectorApi="errors" />, <Cite name="startup_failed" connectorApi="errors" /> or <Cite name="connect_timeout" connectorApi="errors" /> counts as a restart, and the connector tries again after the next wait. On <Cite name="connect_timeout" connectorApi="errors" />, it first kills the process it started for that restart, as `connect()`'s [cleanup](/pipeapi/reference/connector-api/connecting/#connect) does.
+- A restart that fails with any other error, such as <Cite name="verification_failed" connectorApi="errors" />, ends respawning: the connector emits <Cite name="lost" connectorApi="events" /> with the reason <Cite name="unavailable" connectorApi="lost_reasons" /> and that error's code.
+- While it respawns, <Cite name="reconnectBudget" connectorApi="options" /> doesn't apply, since the limit bounds the outage.
+- While it may still start a backend for an endpoint it generated, the connector keeps the directory it generated for it. It removes the directory once the backend has exited and it won't start another: when respawn is off, has given up, or the app has called `close()`.
+- `close()` during a respawn ends it at once, and kills a process the restart started that isn't ready yet.
+
+## Events during a respawn
+
+The backend's exit ends the lease, so the connector has emitted <Cite name="reconnecting" connectorApi="events" />, and unless the app calls `close()`, the respawn ends it with exactly one event:
+
+- A <Cite name="respawned" connectorApi="events" /> event, with the old and new client IDs, once a backend the connector started is ready and it holds a lease on it.
+- A <Cite name="reconnected" connectorApi="events" /> event, when another client's backend serves the endpoint instead: one answers the hello before the restart starts a process, or the process the restart started exits with <Cite name="already_running" section="exit_codes" version="v1" /> because another client won the [spawn race](/pipeapi/reference/protocol-v1/connecting/#spawn-race). The connector attaches to that backend, and from then on it is an attached client, which never respawns.
+- A <Cite name="lost" connectorApi="events" /> event, when the connector gives up.
+
+## Requests and streams during a respawn
+
+- A request not yet sent [waits for ready](/pipeapi/reference/connector-api/lease-loss-and-outages/#waiting-for-ready) through every restart, until the connector holds a lease or the `Backend` is lost.
+- A request in flight when the backend exited is sent again only as [safe retry](/pipeapi/reference/connector-api/lease-loss-and-outages/#safe-retry) allows, once the connector holds a lease on the new backend.
+- An SSE stream [resumes](/pipeapi/reference/connector-api/lease-loss-and-outages/#server-sent-events) as it would after a reconnect, on a backend that knows nothing of the old one's events unless the app keeps them elsewhere.
+- A WebSocket ends, and the connector never opens it again.
+- The primitive, and the typed client built on it, keep working, as [addresses](/pipeapi/reference/connector-api/lease-loss-and-outages/#addresses) says.
+
+## Attached clients during a respawn
+
+A client attached to the backend sees its lease end without an end event, emits <Cite name="reconnecting" connectorApi="events" /> and reconnects. When the respawned backend is ready within the client's <Cite name="reconnectBudget" connectorApi="options" />, the client attaches to it and emits <Cite name="reconnected" connectorApi="events" /> with a new client ID; otherwise it emits <Cite name="lost" connectorApi="events" /> with the reason <Cite name="unavailable" connectorApi="lost_reasons" />. It never emits <Cite name="respawned" connectorApi="events" />. An attached client that should outlast more than the first restart needs a budget longer than the respawning client's waits and the backend's startup together.
+
+## Concurrent respawns
+
+Only the client that spawned a backend's process respawns it, so one exit leads to one respawn at most. A respawn can still race other clients that run `connect()` on the same endpoint with a command of their own. The [spawn race](/pipeapi/reference/protocol-v1/connecting/#spawn-race) settles it: one server takes the endpoint, and every other client, the respawning one included, attaches to it.

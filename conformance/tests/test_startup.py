@@ -11,8 +11,8 @@ from reference_app.environment import (
     Settings,
     read_settings,
 )
-from tests.support.observations import read_observations
-from tests.support.server import run_server
+from runner.observations import read_observations
+from runner.uvicorn_server import run_server
 
 # The status uvicorn exits with when the app's lifespan startup fails.
 UVICORN_STARTUP_FAILURE = 3

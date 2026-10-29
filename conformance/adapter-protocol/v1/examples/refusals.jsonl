@@ -1,0 +1,15 @@
+{"type":"hello","adapterProtocol":1,"connector":{"name":"baseline","version":"0.0.0"},"pid":4242,"transports":["tcp"],"capabilities":[]}
+{"type":"command","id":1,"command":"connect","options":{"endpoint":"tcp://127.0.0.1:8123","token":"xE8-qmrfmvU1YE4Pk6GP5QD7W6cIaTbAXP145cRx_6g"}}
+{"type":"event","event":"started","id":1}
+{"type":"reply","id":1,"command":"connect","result":{"clientId":null}}
+{"type":"command","id":2,"command":"typed_request","backend":1,"operation":"list_items"}
+{"type":"reply","id":2,"command":"typed_request","refusal":{"code":"unknown_command","message":"the baseline adapter has no typed client"}}
+{"type":"command","id":3,"command":"request","backend":9,"via":"untyped","method":"GET","target":"/items"}
+{"type":"reply","id":3,"command":"request","refusal":{"code":"invalid_command","message":"no Backend is named 9"}}
+{"type":"command","id":4,"command":"request","backend":1,"via":"untyped","method":"GET","target":"/status/401"}
+{"type":"event","event":"started","id":4}
+{"type":"event","event":"response","request":4,"status":401,"headers":[["date","Wed, 28 Oct 2026 12:00:00 GMT"],["server","uvicorn"],["www-authenticate","Bearer"],["content-length","14"],["content-type","application/json"]]}
+{"type":"event","event":"response_chunk","request":4,"text":"{\"status\":401}"}
+{"type":"reply","id":4,"command":"request","result":{}}
+{"type":"command","id":5,"command":"close","backend":1}
+{"type":"reply","id":5,"command":"close","result":{}}

@@ -1,6 +1,10 @@
 # yaml-language-server: $schema=registry.schema.json
 # The pre-commit hook check-jsonschema validates this file against the same schema.
 
+# protocol/v1/openapi.yaml's oasdiff-breaking hook in .pre-commit-config.yaml fails only once
+# its args hold --fail-on ERR, so the two change together.
+status: draft
+
 environment_variables:
   PIPEAPI_ENDPOINT:
     description: The endpoint URL the server binds, with its templates already expanded.
@@ -45,10 +49,12 @@ constants:
     value: rendezvous.json
     description: The file name of a generated rendezvous file.
 
+# Each response of openapi.yaml that carries X-PipeAPI-Rejected lists the codes it may carry in
+# x-rejections, with their statuses.
 rejections:
   invalid_host:
     status: 400
-    description: On loopback, the Host header is not exactly the host constant.
+    description: On loopback, the Host header is not the host constant, compared without regard to case, or it carries a port.
   origin_forbidden:
     status: 403
     description: On loopback, the request carries an Origin header.
@@ -94,7 +100,7 @@ exit_codes:
     description: Another server holds the endpoint, so this one never served. It follows EX_TEMPFAIL from sysexits.
   startup_failure:
     code: 78
-    description: The server failed before it served, on an invalid environment or endpoint, a bind failure other than already_running, or a failed app import or lifespan startup. It follows EX_CONFIG from sysexits.
+    description: The server failed before it served, on an invalid environment or endpoint, a socket directory other users can access, a bind failure other than already_running, or a failed app import or lifespan startup. It follows EX_CONFIG from sysexits.
 
 features: {}
 

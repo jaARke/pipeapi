@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from reference_app.app import create_app
 from reference_app.environment import Settings
-from tests.support.server import Server, run_server
+from runner.uvicorn_server import Server, run_server
 from tests.support.targets import PROBE_VALUE, PROBE_VARIABLE, Target
 
 

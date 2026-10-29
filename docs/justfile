@@ -1,21 +1,33 @@
 import "../settings.just"
 
+# This directory and the repository's root as file URLs, which a remap's target needs whole. A
+# space becomes %20, since lychee splits a remap at whitespace.
+docs-url := "file:///" + trim_start_match(replace(replace(module_directory(), "\\", "/"), " ", "%20"), "/")
+repository-url := "file:///" + trim_start_match(replace(replace(parent_directory(module_directory()), "\\", "/"), " ", "%20"), "/")
+
 # The validator in astro.config.mjs checks the links pages write, while the header, sidebar and
-# components put theirs only in the built HTML, so lychee checks that too. The remap and the
+# components put theirs only in the built HTML, so lychee checks that too. The first remap and the
 # exclusion hold siteUrl from astro.config.mjs: links start with its path, which maps onto dist/,
-# and the site's own pages are checked there rather than online.
-built-site := "--no-ignore --index-files index.html --root-dir '" + module_directory() + "' --remap '^(file:///.*/docs)/pipeapi(/.*)?$ $1/dist$2' --exclude '^https://jaarke\\.github\\.io/pipeapi/' -- dist"
+# and the site's own pages are checked there rather than online. The second maps the contract's
+# files on GitHub's main branch onto the working tree, where their anchors are checked offline.
+built-site := "--no-ignore --index-files index.html --root-dir '" + module_directory() + "' --remap '^(file:///.*/docs)/pipeapi(/.*)?$ $1/dist$2' --remap '^https://github\\.com/jaARke/pipeapi/blob/main/(.*)$ " + repository-url + "/$1' --exclude '^https://jaarke\\.github\\.io/pipeapi/' -- dist"
+
+# The repository's Markdown outside the site's pages, such as the contributor pages, links the
+# site by siteUrl. lychee checks those links against dist/ too, offline, so a moved page or anchor
+# fails here rather than after the deploy; just lint checks their other links.
+site-links := "--hidden --extensions md --index-files index.html --exclude-path '^\\.\\.[\\\\/]docs[\\\\/]src[\\\\/]' --remap '^https://jaarke\\.github\\.io/pipeapi(/.*)?$ " + docs-url + "/dist$1' --include '^file:///.*/docs/dist(/|$)' -- .."
 
 # List the available commands.
 default:
     @just --list
 
-# Check the site: formatting, lint, types, frontmatter, a build with no warning from Astro's logger, and internal links.
+# Check the site: formatting, lint, types, frontmatter, a build with no warning from Astro's logger, and the links into its pages.
 check: locked-install
     npm run lint:format
     npm run lint:code
     npm run build
     {{ lychee }} --offline {{ built-site }}
+    {{ lychee }} --offline {{ site-links }}
 
 # Apply ESLint's fixes and Prettier's formatting.
 fix: install

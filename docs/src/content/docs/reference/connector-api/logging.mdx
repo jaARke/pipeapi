@@ -1,0 +1,30 @@
+---
+title: Logging
+description: The log records every connector writes, their levels and context, and what a connector never logs.
+heading: true
+sidebar:
+  order: 9
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+import ConnectorApiTable from '../../../../components/protocol/ConnectorApiTable.astro';
+
+A connector logs what it does, so that an app can see how a connection or an outage went. Every connector logs the same events, at the same levels:
+
+<ConnectorApiTable section="log_events" />
+
+- **Levels.** Debug, info, warning and error, each mapped to its language's own, such as Python's `WARNING` or Go's `slog.LevelWarn`.
+- **Context.** Every record carries the backend's <Cite name="name" connectorApi="options" />, and once the first lease opens, the client ID of the current lease. A record names its event as the table does, in a structured field where the language's mechanism has them.
+- **Silent by default.** A connector logs nothing until the app turns its logging on.
+- **Secrets.** As [tokens](/pipeapi/reference/protocol-v1/tokens-and-proofs/#tokens) requires, a connector MUST NOT log the token or a session secret, at any level. Nor does it log a header that carries one, <Cite name="X-PipeAPI-Enrollment" version="v1" /> or <Cite name="X-PipeAPI-Session" version="v1" />, a spawned backend's environment or its arguments, or a request's query. The conformance suite's canary case proves it at the most verbose level.
+- **Output.** A spawned backend's output goes to a category of its own for each stream, apart from the connector's own records, so the app can route it on its own.
+
+Each connector's issue settles its language's mechanism. Each issue recommends one:
+
+| Language | Mechanism |
+| --- | --- |
+| Node ([#7](https://github.com/jaARke/pipeapi/issues/7)) | A logger option shaped like `console`, with `util.debuglog` when the app gives none |
+| .NET ([#15](https://github.com/jaARke/pipeapi/issues/15)) | An `ILoggerFactory`, through Microsoft.Extensions.Logging.Abstractions, or a delegate with an adapter package |
+| Rust ([#16](https://github.com/jaARke/pipeapi/issues/16)) | The `log` facade, behind a default feature |
+| Go ([#17](https://github.com/jaARke/pipeapi/issues/17)) | A `*slog.Logger` option |
+| Python ([#18](https://github.com/jaARke/pipeapi/issues/18)) | `logging`, with loggers named under `pipeapi` and a `NullHandler` |

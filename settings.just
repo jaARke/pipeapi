@@ -16,3 +16,7 @@ uvx-x64 := "uvx" + if os() == "windows" { " --python-platform x86_64-pc-windows-
 
 # lychee, which the Markdown link hooks and the site's link checks run.
 lychee := uvx-x64 + " --from lychee-bin@0.24.2 lychee --no-progress --include-fragments"
+
+# pyright's wrapper otherwise asks PyPI for the newest pyright on every run, so a Python
+# project's check would reach the network and warn whenever a newer one is out.
+export PYRIGHT_PYTHON_IGNORE_WARNINGS := "1"

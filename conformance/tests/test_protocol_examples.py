@@ -5,17 +5,13 @@ from pathlib import Path
 from typing import Any, Final, cast
 
 import pytest
-import yaml
-from jsonschema import Draft202012Validator
-from jsonschema.protocols import Validator
-from referencing import Registry, Resource
-from referencing.jsonschema import DRAFT202012
+
+from runner.contract import ITEM_SCHEMA
+from runner.schemas import pointer_token, read_document, validator
 
 PROTOCOL: Final = Path(__file__).resolve().parents[2] / "protocol"
 OPENAPI_DOCUMENT: Final = "v*/openapi.yaml"
 OPENAPI_DOCUMENTS: Final = sorted(PROTOCOL.glob(OPENAPI_DOCUMENT))
-# The key that makes a media type a stream, in OpenAPI 3.2.
-ITEM_SCHEMA: Final = "itemSchema"
 
 
 @dataclass(frozen=True)
@@ -47,10 +43,6 @@ class StreamItem:
         return f"{self.stream.id} item {self.index}"
 
 
-def escape(key: str) -> str:
-    return key.replace("~", "~0").replace("/", "~1")
-
-
 def media_types_with_items(
     node: object, pointer: str = ""
 ) -> Iterator[tuple[str, Mapping[str, Any]]]:
@@ -60,14 +52,10 @@ def media_types_with_items(
         if ITEM_SCHEMA in mapping:
             yield pointer, mapping
         for key, value in mapping.items():
-            yield from media_types_with_items(value, f"{pointer}/{escape(key)}")
+            yield from media_types_with_items(value, f"{pointer}/{pointer_token(key)}")
     elif isinstance(node, list):
         for index, value in enumerate(cast("list[Any]", node)):
             yield from media_types_with_items(value, f"{pointer}/{index}")
-
-
-def read_document(path: Path) -> Any:
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
 def stream_examples() -> list[StreamExample]:
@@ -92,18 +80,6 @@ def items_of(stream: StreamExample) -> list[StreamItem]:
 
 STREAM_EXAMPLES: Final = stream_examples()
 STREAM_ITEMS: Final = [item for stream in STREAM_EXAMPLES for item in items_of(stream)]
-
-
-def item_validator(stream: StreamExample) -> Validator:
-    """A validator of the stream's items, resolving references against its document."""
-    uri = stream.document.as_uri()
-    resource: Resource[Any] = Resource.from_contents(
-        read_document(stream.document), default_specification=DRAFT202012
-    )
-    empty: Registry[Any] = Registry()
-    registry = empty.with_resource(uri, resource)
-    schema = {"$ref": f"{uri}#{stream.media_type}/{ITEM_SCHEMA}"}
-    return Draft202012Validator(schema, registry=registry)
 
 
 def test_the_protocol_has_openapi_documents() -> None:
@@ -132,8 +108,11 @@ def test_a_stream_example_gives_its_data_or_its_serialized_lines(
 
 @pytest.mark.parametrize("item", STREAM_ITEMS, ids=lambda item: item.id)
 def test_each_item_of_a_stream_example_meets_the_item_schema(item: StreamItem) -> None:
+    item_schema = validator(
+        item.stream.document, f"{item.stream.media_type}/{ITEM_SCHEMA}"
+    )
     errors = [
         f"{error.json_path}: {error.message}"
-        for error in item_validator(item.stream).iter_errors(item.item)
+        for error in item_schema.iter_errors(item.item)
     ]
     assert errors == []

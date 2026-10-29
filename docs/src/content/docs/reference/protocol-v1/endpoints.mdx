@@ -1,0 +1,67 @@
+---
+title: Endpoints
+description: The endpoint URLs a client accepts, the templates it expands, the endpoints it generates, the rendezvous file, and who each transport admits.
+heading: true
+sidebar:
+  order: 1
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+import ContractLink from '../../../../components/protocol/ContractLink.astro';
+
+## Endpoint URLs
+
+An endpoint URL names a transport and an address. A client MUST accept exactly these forms, which are case-sensitive, and MUST take everything after the scheme's `://` literally, without percent-decoding.
+
+| Form | Transport | Operating systems |
+| --- | --- | --- |
+| `unix://<path>` | A Unix domain socket at `<path>` | POSIX |
+| `npipe:////./pipe/<name>` | The Windows named pipe `\\.\pipe\<name>` | Windows |
+| `tcp://127.0.0.1:<port>` or `tcp://[::1]:<port>` | TCP on the loopback address | All |
+
+- `<path>` MUST be absolute.
+- `<name>` MUST NOT be empty or contain `/` or `\`, and the pipe's full path, `\\.\pipe\<name>`, MUST be at most 256 UTF-16 code units, as Windows counts its length.
+- `<port>` is an integer from 0 to 65535, without leading zeros. Port 0 marks a [generated](#generated-endpoints) loopback endpoint, whose server reports the port it bound through the [rendezvous file](#rendezvous-file). A client given a port-0 endpoint MUST also be given its rendezvous file's path, and otherwise the endpoint is invalid. Ports 80 and 443 are refused, for the reason [ports 80 and 443](/pipeapi/reference/protocol-v1/security-considerations/#ports-80-and-443) gives.
+- A hostname, a wildcard address or any other address is invalid, as is anything after the port.
+
+A client MUST reject an invalid endpoint before it spawns a backend or connects. A server given an invalid endpoint MUST exit with <Cite name="startup_failure" section="exit_codes" />.
+
+A client MUST also reject, as an unsupported transport, an endpoint whose transport its operating system doesn't support: a `unix://` endpoint on Windows, or an `npipe://` endpoint on POSIX. The connector API names that error <Cite name="unsupported_transport" connectorApi="errors" />. On Windows, a backend listens on a named pipe, since Python's asyncio has no Unix domain socket server there.
+
+## Templates
+
+A client expands templates in a `unix://` endpoint's path and an `npipe://` endpoint's name, so independent clients agree on a shared endpoint, such as `npipe:////./pipe/myapp-{user}`. A `tcp://` endpoint carries none.
+
+- `{user}`: on POSIX, the effective UID. On Windows, the user name that `GetUserNameW` returns, which is the account name without its domain, as Node's `os.userInfo().username` gives it.
+- `{session}`: on Windows, the Remote Desktop Services session ID of the client's process, as `ProcessIdToSessionId` gives it. In a `unix://` endpoint, it makes the endpoint invalid, since POSIX has no portable login-session ID.
+- `{pid}`: the client's own PID.
+
+A `{` or `}` that isn't part of one of these templates makes a client's endpoint invalid, and template names are case-sensitive. Expansion is a single pass: the text a template expands to is never expanded again. The rules for [endpoint URLs](#endpoint-urls) apply to the expanded endpoint. A server takes its endpoint as it receives it, already expanded, and expands nothing: a brace in a server's endpoint is part of its path or pipe name, and these rules don't apply to it.
+
+## Generated endpoints
+
+A client given no endpoint generates one, so that no other client knows it:
+
+- **Named pipe:** `npipe:////./pipe/<prefix>-<name>-<uuid>`, or `npipe:////./pipe/<prefix>-<uuid>` for a backend without a name. `<prefix>` is <Cite name="generated_name_prefix" section="constants" />, `<name>` is the backend's <Cite name="name" connectorApi="options" />, which the connector API defines, and `<uuid>` is a random (version 4) UUID in lowercase hyphenated form.
+- **Unix domain socket:** `unix://<dir>/<file>`, where `<file>` is <Cite name="socket_file" section="constants" />. `<dir>` is a new directory that the client creates with mode 0700, as `mkdtemp` does, named `<prefix>-` followed by random characters. It sits in `$XDG_RUNTIME_DIR` when that is set and absolute, and otherwise in the system's temporary directory. The socket's path MUST be at most 103 bytes, which is macOS's `sun_path` limit less its terminating NUL, so when it would be longer, the client creates the directory in `/tmp` instead.
+- **Loopback:** `tcp://127.0.0.1:0`, with the [rendezvous file](#rendezvous-file) at `<dir>/<file>`, where `<file>` is <Cite name="rendezvous_file" section="constants" />. `<dir>` is a new directory created as a socket's is, which only the user can access: mode 0700 on POSIX, and on Windows an access list that grants only the user, SYSTEM and Administrators, as CPython's mode 0700 does there.
+
+## Rendezvous file
+
+On loopback with a generated port, the server binds port 0, so that the OS picks a free port, then writes that port to the rendezvous file that <Cite name="PIPEAPI_RENDEZVOUS" /> names. The file is a JSON object, encoded as UTF-8, whose shape is <ContractLink path="protocol/v1/rendezvous.schema.json">`rendezvous.schema.json`</ContractLink>. A client ignores a property it doesn't know.
+
+- The server MUST write the file only once it has bound, and atomically: it writes a temporary file in the same directory, then renames it over the file's name.
+- The client waits for the file to exist, then reads the port from it. It MUST read the file again before each hello it sends, since a file that a server stopped too abruptly to remove names a port that is no longer that server's, and a new server replaces it.
+- The file's directory is always one that a client created for that backend, as [generated endpoints](#generated-endpoints) says. A client MUST NOT give a backend any other rendezvous path: a client given a rendezvous path passes on only one that another client generated.
+- The server removes the file as it stops, then the directory if it is then empty, as [generated files](/pipeapi/reference/protocol-v1/lifetime/#generated-files) says.
+
+## Transport access
+
+Each transport limits who can reach a backend:
+
+- **Named pipe:** the server MUST create every instance with `PIPE_REJECT_REMOTE_CLIENTS`, so a remote client can't connect over SMB, and with a security descriptor that grants access to the current user only.
+- **Unix domain socket:** the socket MUST sit in a directory only its user can access. A generated socket's directory is created so. A server whose socket would sit in a directory that another user owns, or that its group or other users can access, MUST exit with <Cite name="startup_failure" section="exit_codes" /> before it binds, so a socket path the user gives sits in such a directory too.
+- **Loopback:** the server MUST bind only its endpoint's loopback address, never a wildcard address. The OS still lets every local user connect, so only the token keeps them out (see [limits](/pipeapi/reference/protocol-v1/security-considerations/#limits)).
+- **Rendezvous file:** its directory MUST admit only the user, as a generated rendezvous file's directory does, and a client gives a backend no other [rendezvous path](#rendezvous-file). No other user can then replace the file and point clients at another port.
+
+A client on Windows SHOULD open a named pipe at identification-level impersonation at most, with `SECURITY_SQOS_PRESENT` and `SECURITY_IDENTIFICATION`, so that a rogue pipe server can't act as the client. A client that can't set it is covered under [limits](/pipeapi/reference/protocol-v1/security-considerations/#limits).

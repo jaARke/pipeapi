@@ -40,23 +40,70 @@ repos:
         name: Validate the connector API against its meta-schema
         files: ^protocol/connector-api/connector-api\.schema\.json$
         args: [--schemafile, protocol/connector-api/meta.schema.json]
+      # cases.yaml's and components.yaml's modelines name the same schemas for editors.
+      - id: check-jsonschema
+        name: Validate the conformance cases against their schema
+        files: ^conformance/cases/cases\.yaml$
+        args: [--schemafile, conformance/cases/cases.schema.json]
+      - id: check-jsonschema
+        name: Validate the conformance components against their schema
+        files: ^conformance/cases/components\.yaml$
+        args: [--schemafile, conformance/cases/components.schema.json]
+      # Each connector's expected failures, by the name conformance/runner/cases.py finds
+      # them by.
+      - id: check-jsonschema
+        name: Validate each connector's expected conformance failures against their schema
+        files: (^|/)expected-failures\.yaml$
+        args: [--schemafile, conformance/cases/expected-failures.schema.json]
+      # Each connector's adapter manifest, by the name conformance/runner/adapters.py finds them
+      # by; each manifest's modeline names the same schema for editors.
+      - id: check-jsonschema
+        name: Validate each connector's adapter manifest against its schema
+        files: (^|/)adapter\.yaml$
+        args: [--schemafile, conformance/adapter-protocol/manifest.schema.json]
       - id: check-metaschema
-        name: Validate the protocol's schemas against their metaschemas
-        files: ^protocol/.+\.schema\.json$
+        name: Validate the protocol's and the conformance suite's schemas against their metaschemas
+        files: ^(protocol|conformance)/.+\.schema\.json$
 
   - repo: https://github.com/daveshanley/vacuum
     rev: 424f9daf7ebfab015a24e24e12bf269f9adeb586 # frozen: v0.33.2
     hooks:
       - id: vacuum
         files: ^protocol/v\d+/openapi\.yaml$
-        # The Go toolchain prek builds the hook with. Dependabot doesn't update it, so it moves by hand.
-        language_version: 1.27.3
+        # The Go toolchain prek builds the hook with, and oasdiff's. Dependabot doesn't update it,
+        # so it moves by hand.
+        language_version: &go 1.27.3
         # Every finding fails, examples that violate their schema included, which vacuum reports
         # as warnings.
         args: [--details, --fail-severity, warn, --ruleset, protocol/vacuum-ruleset.yaml]
 
+  # Protocol v1's OpenAPI document against main as the clone last fetched it, which CI fetches. A
+  # new protocol version adds a hook of its own, since a hook's args hold its version's mode.
+  - repo: https://github.com/oasdiff/oasdiff
+    rev: b762ae6335f6b22204b0f6c633604660464415a2 # frozen: v1.34.1
+    hooks:
+      # While protocol/v1/registry.yaml's status is draft, the hook reports breaking changes without
+      # failing, and verbose shows a passing hook's report. The release of v1 adds --fail-on ERR to
+      # args and drops verbose, so the two change together.
+      - id: oasdiff-breaking
+        name: Check protocol v1's OpenAPI document for breaking changes
+        files: ^protocol/v1/openapi\.yaml$
+        language_version: *go
+        args: [--base, origin/main]
+        verbose: true
+
   - repo: local
     hooks:
+      # A draft contract's changes are only reported, so verbose shows what a passing run found.
+      # The check runs in the scripts project's environment, which needs none of its dev tools.
+      - id: contract
+        name: Check the contract against main
+        entry: uv run --quiet --locked --no-dev --project scripts scripts/check_contract.py
+        args: [--base, origin/main]
+        language: system
+        files: ^(protocol|scripts|conformance/(cases|adapter-protocol))/
+        pass_filenames: false
+        verbose: true
       # A site page names a protocol variable, header or route only as <Cite name="..." />, which
       # fails the build on a name the protocol's files don't hold.
       - id: protocol-names

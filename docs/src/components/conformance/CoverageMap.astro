@@ -1,0 +1,57 @@
+---
+import { anchorOf } from '../protocol/contract';
+import { coverage } from './cases';
+import CodeText from './CodeText.astro';
+
+// The build fails here on an anchor that nothing covers and no reason explains.
+const documents = await coverage();
+---
+
+{documents.map(({ document, title, anchors }) => {
+	const covered = anchors.filter(({ coveredBy }) => coveredBy.length > 0).length;
+	const section = anchorOf('coverage', document);
+	return (
+		<>
+			<h3 id={section}>{title}</h3>
+			<p>
+				Cases or invariants cover {covered} of its {anchors.length} sections and table rows.
+			</p>
+			<table>
+				<thead>
+					<tr>
+						<th>Section or row</th>
+						<th>Covered by</th>
+					</tr>
+				</thead>
+				<tbody>
+					{anchors.map(({ anchor, coveredBy, reason }) => (
+						<tr id={anchorOf(section, anchor.anchor)}>
+							<td>
+								<a href={anchor.href}>
+									{anchor.kind === 'row' ? <code>{anchor.text}</code> : anchor.text}
+								</a>
+							</td>
+							<td>
+								{reason === undefined ? (
+									coveredBy.map((id, index) => (
+										<>
+											{index > 0 && ', '}
+											<a href={`#${id}`}>
+												<code>{id}</code>
+											</a>
+										</>
+									))
+								) : (
+									<>
+										<strong>Not covered.</strong>{' '}
+										<CodeText text={reason} where={`uncovered's ${document}#${anchor.anchor}`} />
+									</>
+								)}
+							</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</>
+	);
+})}

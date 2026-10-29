@@ -1,0 +1,83 @@
+---
+title: Connecting
+description: What a spawned backend receives, the connect sequence with its spawn race, enrollment and sessions, and how clients share a backend and tell each other apart.
+sidebar:
+  order: 2
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+import RegistryTable from '../../../../components/protocol/RegistryTable.astro';
+
+## Environment variables
+
+A client that spawns a backend passes it these variables in its environment.
+
+<RegistryTable version="v1" section="environment_variables" />
+
+- A client MUST pass <Cite name="PIPEAPI_ENDPOINT" /> and <Cite name="PIPEAPI_TOKEN" />, and MUST pass <Cite name="PIPEAPI_RENDEZVOUS" /> exactly when the endpoint is loopback with a generated port. It passes the others only when it has a value for them.
+- A spawned backend always receives these names, whatever prefix a client reads its own configuration under.
+- The server MUST read these variables at startup and remove them from its own environment, so that the processes it starts don't inherit them.
+- A server given a malformed value in one of these variables, an empty token, or a port-0 endpoint without <Cite name="PIPEAPI_RENDEZVOUS" />, MUST exit with <Cite name="startup_failure" section="exit_codes" />.
+
+## Connect sequence
+
+A client connects to a backend in these steps, whether or not it spawns the backend. A client that implements the protocol itself, without a connector, MUST follow them too, and hold its lease for as long as it uses the backend.
+
+1. **Resolve the endpoint.** The client [expands](/pipeapi/reference/protocol-v1/endpoints/#templates) the endpoint it was given, or [generates](/pipeapi/reference/protocol-v1/endpoints/#generated-endpoints) an endpoint and a token.
+2. **Attach or spawn.** A client given a port-0 endpoint attaches without spawning, and goes on to step 3: only the client that generated a port-0 endpoint spawns a backend for it. Otherwise the client connects to the endpoint, and attaches to the backend that accepts the connection. When nothing accepts it, because the connection is refused or no such pipe or socket exists, the client starts a backend with its spawn command and the [environment variables](#environment-variables). A client without a spawn command fails instead.
+3. **Wait for the hello.** The client requests <Cite name="/__pipeapi/ready" /> with a fresh <Cite name="X-PipeAPI-Nonce" />, and tries again, backing off, until the server answers. On loopback with a rendezvous file, it first waits for the [rendezvous file](/pipeapi/reference/protocol-v1/endpoints/#rendezvous-file). The client's deadline bounds the whole sequence, and the client fails when it passes.
+   - While a backend the client spawned runs, the client keeps trying. When that backend exits with <Cite name="already_running" section="exit_codes" />, because another server took the endpoint, or exits after answering <Cite name="draining" section="rejections" />, the client keeps trying as one that has spawned nothing. When it exits any other way, the client fails.
+   - When the client has spawned nothing, a hello whose connection nothing accepts sends the client back to step 2.
+   - A hello answered with <Cite name="draining" section="rejections" /> counts as no answer, as [draining](/pipeapi/reference/protocol-v1/lifetime/#draining) says. A hello answered with any other rejection stops the client, since the server isn't one it can verify.
+   - Any other response is the server's answer, which step 5 verifies, so one that holds no valid hello, such as the 404 of an HTTP server that isn't pipeapi, fails verification.
+   - A server MUST NOT answer a hello before the app's lifespan startup has run, so a hello means the app is ready.
+4. **Negotiate.** The client picks the highest protocol version that both it and the hello's `protocols` list. With none in common, it fails, naming both sides' versions. It reads the rest of the hello by the chosen version's rules, and every later request carries that version in <Cite name="X-PipeAPI-Protocol" /> (see [versioning](/pipeapi/reference/protocol-v1/versioning/)).
+5. **Verify the server.** The client checks the hello's [proof](/pipeapi/reference/protocol-v1/tokens-and-proofs/#hello-proof). Where the client's runtime can read the PID of the process at the other end of the connection, as it can on a named pipe or a Unix domain socket, the client MUST also check that the PID equals the hello's `pid`. On any mismatch, the client MUST NOT enroll with that server. On loopback with a rendezvous file, the file may be stale, so the client reads it again and goes back to step 3; on any other endpoint, it stops.
+6. **Enroll.** The client opens its lease, requesting <Cite name="/__pipeapi/lease" /> with <Cite name="X-PipeAPI-Enrollment" />, which answers the hello's challenge (see [enrollment](#enrollment)).
+   - A lease request answered with <Cite name="draining" section="rejections" /> sends the client back to step 3, as [draining](/pipeapi/reference/protocol-v1/lifetime/#draining) says.
+   - One answered with <Cite name="enrollment_failed" section="rejections" />, such as for a challenge that expired or that the server evicted, sends the client back to step 3 once, for a fresh hello. A second one stops the client.
+   - One answered with <Cite name="unsupported_protocol" section="rejections" /> stops the client, since the server contradicted its own hello.
+7. **Use the session.** The lease's first event, <Cite name="session" section="lease_event_types" />, gives the client its ID and session secret. Every later request carries them in <Cite name="X-PipeAPI-Session" /> (see [sessions](#sessions)), and the backend is ready for the client's requests.
+
+### Spawn race
+
+When clients given the same endpoint spawn backends at the same moment, exactly one server takes the endpoint:
+
+- **Named pipe:** the server creates the pipe's first instance with `FILE_FLAG_FIRST_PIPE_INSTANCE`, which fails when the pipe already exists.
+- **Unix domain socket:** the server takes an exclusive advisory lock on the lock file beside the socket, as `flock(2)` takes one, without waiting for it: a server that can't take the lock at once hasn't taken the endpoint. The lock file's path is the socket's with <Cite name="lock_suffix" section="constants" /> appended, and the server creates the file when it is missing. Holding the lock, it removes any socket file a stopped server left at the path, then binds. It holds the lock until it has removed its socket file as it [stops](/pipeapi/reference/protocol-v1/lifetime/#stopping), then releases it. A server never removes the lock file, which another server may already hold open.
+- **Loopback:** the server binds the port exclusively, with `SO_EXCLUSIVEADDRUSE` on Windows.
+
+The server takes its endpoint before it runs the app's lifespan startup, and accepts connections only once the startup has run. A server that doesn't take the endpoint MUST exit with <Cite name="already_running" section="exit_codes" /> without running the app or serving, and its client keeps trying for the hello of the server that took it, as step 3 says.
+
+A named pipe or a socket settles any race this way, whether its endpoint was generated or given. A port-0 endpoint can't race, since only the client that generated it spawns a backend for it, and binding port 0 never conflicts.
+
+### Enrollment
+
+The hello's `challenge` is single-use and belongs to that hello. The lease request answers it with <Cite name="X-PipeAPI-Enrollment" />: the challenge as the hello gave it, a period, then the [enrollment proof](/pipeapi/reference/protocol-v1/tokens-and-proofs/#enrollment-proof).
+
+- The server MUST accept a challenge at most once, and only within <Cite name="challenge_lifetime" section="durations" /> of the hello that issued it. A lease request that names a challenge uses it up once the server checks its enrollment, whether or not the check succeeds. A lease request refused by an earlier check, in the order [rejections](/pipeapi/reference/protocol-v1/requests/#rejections) gives, leaves its challenge unused.
+- The server MUST compare the proof with the one it computes in constant time.
+- The server MAY bound how many unused challenges it keeps, evicting the oldest first. A client whose challenge was evicted gets <Cite name="enrollment_failed" section="rejections" />, and tries again as step 6 of the [connect sequence](#connect-sequence) says.
+- A lease request whose enrollment is missing, malformed, names a challenge the server didn't issue, already used or let expire, or carries a wrong proof, gets <Cite name="enrollment_failed" section="rejections" />.
+
+### Sessions
+
+The <Cite name="session" section="lease_event_types" /> event gives the client a `client_id` and a `secret`. Every request after enrollment MUST carry <Cite name="X-PipeAPI-Session" />: the client ID, a period, then the secret.
+
+- The server MUST check the session on every request but the hello and the lease request, comparing the secret in constant time. A request whose session is missing or malformed, names an unknown client, carries a wrong secret, or belongs to a lease that has ended, gets <Cite name="invalid_session" section="rejections" />.
+- A client ID is bound to its secret, so no client can use another's ID.
+- A session lasts as long as its lease. A new lease gets a new client ID, and the server never reuses an ID while it runs.
+- Revoking a client ends its lease with an <Cite name="end" section="lease_event_types" /> event whose reason is <Cite name="revoked" section="lease_end_reasons" />, which ends its session. The server's API lets the app revoke one client.
+
+## Sharing a backend
+
+A backend serves any number of clients of the same OS user. Clients share a backend by sharing its endpoint and its token, and for a generated loopback endpoint its rendezvous path too. Either the user configures the endpoint and the token for every client, such as an endpoint [template](/pipeapi/reference/protocol-v1/endpoints/#templates) and a token from the user's own configuration, or one client passes its generated values to another. On a configured endpoint, every client may carry the spawn command: whichever arrives first starts the backend, and the rest attach, since a [spawn race](#spawn-race) ends with one server. A port-0 endpoint's backend is started only by the client that generated it. The backend runs while any client holds a lease, whichever client started it, and stops after the last lease ends and the idle grace passes.
+
+## Identity
+
+Each lease gives its client an identity, the client ID in the session event, which [sessions](#sessions) bind to a secret.
+
+- **The client** learns its own ID, and nothing about other clients. The ID is opaque to it.
+- **The app** learns, through the pipeapi server's API, the client ID of the session each request carries, so it can tell clients apart and send a message to one of them. It learns when each client's lease ends, and it can revoke one client. It never sees the token, a session secret or a proof, since the server removes the headers that carry them.
+- The session identifies a client, not the connection, so a client may send requests on any number of connections. Requests from every client reach the same app concurrently, as in any web server.
+- A client that reconnects gets a new ID. The server can't tell a client that reconnects from a new one, and after a restart the app's state about the old ID is gone anyway.

@@ -1,0 +1,36 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Components",
+	"description": "The components the conformance cases need, each by its ID, with the issue that builds it and whether it is built. The runner skips a case while a component it needs isn't built, and the issue that builds a component sets its built to true.",
+	"type": "object",
+	"propertyNames": {
+		"description": "A component's ID, in lowercase kebab-case.",
+		"pattern": "^[a-z]+(-[a-z0-9]+)*$"
+	},
+	"additionalProperties": { "$ref": "#/$defs/component" },
+	"minProperties": 1,
+	"$defs": {
+		"component": {
+			"description": "A component.",
+			"type": "object",
+			"properties": {
+				"description": {
+					"description": "What the component is, in one or two sentences of plain text. Text between backticks renders as code.",
+					"type": "string",
+					"minLength": 1
+				},
+				"issue": {
+					"description": "The number of the GitHub issue that builds it.",
+					"type": "integer",
+					"minimum": 1
+				},
+				"built": {
+					"description": "Whether it is built, so that the cases that need it run.",
+					"type": "boolean"
+				}
+			},
+			"required": ["description", "issue", "built"],
+			"additionalProperties": false
+		}
+	}
+}

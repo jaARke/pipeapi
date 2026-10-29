@@ -1,0 +1,47 @@
+---
+title: Connector API
+description: The surface every pipeapi connector offers the app that uses it, in its language's idiom, with the options, events, errors and log records they share.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import PageIndex from '../../../../components/PageIndex.astro';
+import Cite from '../../../../components/protocol/Cite.astro';
+import ContractLink from '../../../../components/protocol/ContractLink.astro';
+
+A connector is pipeapi's client library for one language: Node, .NET, Rust, Go or Python. It implements [protocol v1](/pipeapi/reference/protocol-v1/) for an app, and every connector offers the same capabilities, options, events and errors, each in its language's idiom. These pages state that shared surface. Each connector's API reference maps its own names onto it, and the conformance suite ([#5](https://github.com/jaARke/pipeapi/issues/5)) holds every connector to it.
+
+<PageIndex />
+
+## Conventions
+
+Key words in capitals, such as MUST and SHOULD, mean what [protocol v1's conventions](/pipeapi/reference/protocol-v1/#conventions) say, and these pages use the [terms](/pipeapi/reference/protocol-v1/#terms) protocol v1 defines. The **app** is the program that uses a connector, and a **`Backend`** is the object through which it uses one backend.
+
+The file <ContractLink path="protocol/connector-api/connector-api.schema.json" /> is part of the connector API. It is a JSON Schema whose definitions hold the options, the lifecycle events, the errors and the log records, as JSON can carry them, and the fixed values every connector uses. The tables of these pages render it, and every option, request option, lifecycle event, error, reason for a lost `Backend`, log event and constant they name comes from it, as do the fields of events, errors and log records in its tables. The conformance suite's adapters and each connector's tests read it too.
+
+### Names in each language
+
+The file spells each name once. Options, and the fields of events, errors and log records, are in camelCase there, and each language spells them by its own conventions: <Cite name="envPrefix" connectorApi="options" /> stays as it is in Node, and becomes `EnvPrefix` in .NET and Go, and `env_prefix` in Rust and Python. The capabilities below follow the same rule.
+
+Event types, error codes and log events are snake_case strings that apps match on. A connector carries each one as a string spelled exactly as the file spells it. A language that also names one as a member, such as a .NET event or an enumeration's case, spells that member by its own conventions.
+
+Durations are seconds in the file, and each language takes them in its own form, such as a `TimeSpan` in .NET or a `time.Duration` in Go. Each connector's issue settles its language's forms: [#7](https://github.com/jaARke/pipeapi/issues/7) for Node, [#15](https://github.com/jaARke/pipeapi/issues/15) for .NET, [#16](https://github.com/jaARke/pipeapi/issues/16) for Rust, [#17](https://github.com/jaARke/pipeapi/issues/17) for Go and [#18](https://github.com/jaARke/pipeapi/issues/18) for Python.
+
+## Capabilities
+
+| Capability | What it does |
+| --- | --- |
+| `connect(options)` | The single entry point. It runs the [connect sequence](/pipeapi/reference/protocol-v1/connecting/#connect-sequence), attaching to a backend at the endpoint or spawning one, and returns a `Backend`. |
+| `backend.close()` | Releases this client's lease and connections. The backend stops only once no client holds a lease. |
+| `backend.shutdown()` | Stops the backend for every client. |
+| Untyped request | Sends one HTTP request over the endpoint's transport, with the headers every request carries. |
+| HTTP primitive | The language's standard HTTP client object, set up for this backend, for generated clients to use. |
+| `dial()` | Opens a raw connection to the endpoint, for an HTTP client the primitive doesn't cover, with the headers its caller adds to each request. |
+| SSE helper | Iterates the server-sent events of a streaming response. |
+| `ValidationError` | Turns the app's 422 validation error into a structured error. |
+| `backend.clientId` | The client ID of the current lease. |
+| Lifecycle events | The [events](/pipeapi/reference/connector-api/lifecycle-events/) a `Backend` emits as its lease and its backend change. |
+| Outage handling | [Built into](/pipeapi/reference/connector-api/lease-loss-and-outages/) the untyped request and the primitive: a request not yet sent waits for the backend to be ready, a request in flight is sent again only when that is safe, and the SSE helper resumes a stream. |
+| Busy-pipe retry | On Windows, a connection that finds every instance of the pipe busy [tries again](/pipeapi/reference/connector-api/lease-loss-and-outages/#opening-connections) until <Cite name="connectTimeout" connectorApi="options" /> passes, for every connection the connector opens. |
+| Respawn | When the app turns it on, the connector that spawned a backend [starts it again](/pipeapi/reference/connector-api/respawn/) after it exits unexpectedly. |

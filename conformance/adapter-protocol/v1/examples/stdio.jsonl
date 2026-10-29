@@ -1,0 +1,21 @@
+{"type":"hello","adapterProtocol":1,"connector":{"name":"node","version":"0.1.0"},"pid":4242,"transports":["unix","tcp"],"capabilities":["peer_pid","typed_client"]}
+{"type":"command","id":1,"command":"connect","options":{"transport":"unix","stdin":"pipe","command":"pipeapi","args":["run","reference_app.main:app"]},"sinks":{"stdout":"stall","stderr":"collect"}}
+{"type":"event","event":"started","id":1}
+{"type":"event","event":"output","backend":1,"stream":"stderr","line":"INFO:     Started server process [5120]"}
+{"type":"event","event":"output","backend":1,"stream":"stderr","line":"INFO:     Waiting for application startup."}
+{"type":"event","event":"output","backend":1,"stream":"stderr","line":"INFO:     Application startup complete."}
+{"type":"reply","id":1,"command":"connect","result":{"clientId":"c1"}}
+{"type":"command","id":2,"command":"stdin_write","backend":1,"text":"hello\n"}
+{"type":"reply","id":2,"command":"stdin_write","result":{}}
+{"type":"command","id":3,"command":"request","backend":1,"via":"untyped","method":"POST","target":"/input"}
+{"type":"event","event":"started","id":3}
+{"type":"event","event":"response","request":3,"status":200,"headers":[["date","Wed, 28 Oct 2026 12:00:00 GMT"],["server","uvicorn"],["content-length","46"],["content-type","application/json"]]}
+{"type":"event","event":"response_chunk","request":3,"text":"{\"outcome\":\"line\",\"line\":\"hello\",\"error\":null}"}
+{"type":"reply","id":3,"command":"request","result":{}}
+{"type":"command","id":4,"command":"sink_resume","backend":1,"stream":"stdout"}
+{"type":"reply","id":4,"command":"sink_resume","result":{}}
+{"type":"event","event":"output","backend":1,"stream":"stdout","line":"INFO:     127.0.0.1:0 - \"POST /input HTTP/1.1\" 200 OK"}
+{"type":"command","id":5,"command":"stdin_close","backend":1}
+{"type":"reply","id":5,"command":"stdin_close","result":{}}
+{"type":"command","id":6,"command":"close","backend":1}
+{"type":"reply","id":6,"command":"close","result":{}}

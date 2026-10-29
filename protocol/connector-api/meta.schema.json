@@ -7,6 +7,10 @@
 		"$schema": { "const": "https://json-schema.org/draft/2020-12/schema" },
 		"title": { "type": "string", "minLength": 1 },
 		"description": { "$ref": "#/$defs/description" },
+		"x-status": {
+			"description": "Whether the connector API is a draft, which may still change in any way, or released, from which its error codes, lifecycle event types and reasons for a lost Backend are only ever added to. The first release of any package that ships it makes it released, and it stays released.",
+			"enum": ["draft", "released"]
+		},
 		"$defs": {
 			"description": "The options of connect() and of a request, the three unions apps and connectors exchange, the reasons a Backend is lost, and the types they share.",
 			"type": "object",
@@ -29,7 +33,7 @@
 			"additionalProperties": { "$ref": "#/$defs/constant" }
 		}
 	},
-	"required": ["$schema", "title", "description", "$defs", "x-constants"],
+	"required": ["$schema", "title", "description", "x-status", "$defs", "x-constants"],
 	"additionalProperties": false,
 	"$defs": {
 		"identifier": {
@@ -43,7 +47,7 @@
 			"pattern": "^[a-z][a-zA-Z0-9]*$"
 		},
 		"description": {
-			"description": "One or two sentences of plain text. The connector API page states the rules that apply.",
+			"description": "One or two sentences of plain text. The connector API's pages on the guide site state the rules that apply.",
 			"type": "string",
 			"minLength": 1
 		},

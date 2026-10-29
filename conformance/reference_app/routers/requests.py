@@ -8,6 +8,8 @@ from fastapi import APIRouter, Path, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from reference_app.routers.operations import require_operation_id
+
 BARRIER_DEADLINE_SECONDS: Final = 30.0
 """
 How long a barrier waits for its parties, which a run that sends them all never
@@ -68,7 +70,7 @@ def create_router() -> APIRouter:
     Returns:
         The router.
     """
-    router = APIRouter()
+    router = APIRouter(generate_unique_id_function=require_operation_id)
     barriers: dict[str, _Barrier] = {}
 
     async def seen(request: Request) -> Seen:
@@ -106,7 +108,7 @@ def create_router() -> APIRouter:
         for path in ("/seen", "/seen/{rest:path}"):
             router.add_api_route(path, seen, methods=[method], include_in_schema=False)
 
-    @router.post("/echo")
+    @router.post("/echo", operation_id="echo")
     async def echo(request: Request) -> StreamingResponse:
         """
         Send the request's body back, streamed in the chunks it arrived in.
@@ -128,7 +130,7 @@ def create_router() -> APIRouter:
             media_type=request.headers.get("content-type", "application/octet-stream"),
         )
 
-    @router.get("/headers")
+    @router.get("/headers", operation_id="headers")
     async def headers(response: Response) -> SentHeaders:
         """
         Answer with two `Set-Cookie` headers, which a client must keep apart.
@@ -156,9 +158,14 @@ def create_router() -> APIRouter:
         return JSONResponse({"status": code}, status_code=code, headers=headers)
 
     for method in ("GET", "POST"):
-        router.add_api_route("/status/{code}", status, methods=[method])
+        router.add_api_route(
+            "/status/{code}",
+            status,
+            methods=[method],
+            operation_id=f"{method.lower()}_status",
+        )
 
-    @router.get("/barrier/{name}")
+    @router.get("/barrier/{name}", operation_id="barrier")
     async def barrier(
         name: str, parties: Annotated[int, Query(ge=1)]
     ) -> BarrierOutcome:

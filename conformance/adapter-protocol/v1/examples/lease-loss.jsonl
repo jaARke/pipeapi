@@ -1,0 +1,26 @@
+{"type":"hello","adapterProtocol":1,"connector":{"name":"go","version":"0.1.0"},"pid":4242,"transports":["unix","tcp"],"capabilities":["peer_pid","typed_client"]}
+{"type":"command","id":1,"command":"connect","options":{"endpoint":"unix:///run/user/1000/demo.sock","token":"xE8-qmrfmvU1YE4Pk6GP5QD7W6cIaTbAXP145cRx_6g","name":"demo","reconnectBudget":10},"logging":"info"}
+{"type":"event","event":"started","id":1}
+{"type":"event","event":"log","record":{"event":"attached","level":"info","name":"demo","clientId":null,"endpoint":"unix:///run/user/1000/demo.sock","message":"attached to a running backend"}}
+{"type":"event","event":"log","record":{"event":"lease_opened","level":"info","name":"demo","clientId":"c1","leaseTtl":null,"message":"opened a lease"}}
+{"type":"reply","id":1,"command":"connect","result":{"clientId":"c1"}}
+{"type":"command","id":2,"command":"read_backend","backend":1}
+{"type":"reply","id":2,"command":"read_backend","result":{"clientId":"c1","headers":[["Host","pipeapi.localhost"],["X-PipeAPI-Protocol","1"],["X-PipeAPI-Session","c1.hs525nVEyg0F760kOGuBD6FIlfAsIlLPbsDwfEE9SPE"]]}}
+{"type":"event","event":"lifecycle","backend":1,"lifecycle":{"type":"reconnecting","endReason":null}}
+{"type":"event","event":"log","record":{"event":"reconnecting","level":"warning","name":"demo","clientId":"c1","endReason":null,"message":"the lease ended, reconnecting"}}
+{"type":"command","id":3,"command":"request","backend":1,"via":"primitive","method":"GET","target":"/items"}
+{"type":"event","event":"started","id":3}
+{"type":"event","event":"log","record":{"event":"lease_opened","level":"info","name":"demo","clientId":"c2","leaseTtl":null,"message":"opened a lease"}}
+{"type":"event","event":"lifecycle","backend":1,"lifecycle":{"type":"reconnected","oldClientId":"c1","newClientId":"c2"}}
+{"type":"event","event":"log","record":{"event":"reconnected","level":"info","name":"demo","clientId":"c2","oldClientId":"c1","newClientId":"c2","message":"reconnected"}}
+{"type":"event","event":"response","request":3,"status":200,"headers":[["date","Wed, 28 Oct 2026 12:00:00 GMT"],["server","uvicorn"],["content-length","2"],["content-type","application/json"]]}
+{"type":"event","event":"response_chunk","request":3,"text":"[]"}
+{"type":"reply","id":3,"command":"request","result":{}}
+{"type":"command","id":4,"command":"read_backend","backend":1}
+{"type":"reply","id":4,"command":"read_backend","result":{"clientId":"c2","headers":[["Host","pipeapi.localhost"],["X-PipeAPI-Protocol","1"],["X-PipeAPI-Session","c2.yFHrhBiKjK3T2RvPDZnXtwCAWTdVLY96UbezUNIr27Q"]]}}
+{"type":"command","id":5,"command":"shutdown","backend":1}
+{"type":"reply","id":5,"command":"shutdown","result":{}}
+{"type":"event","event":"lifecycle","backend":1,"lifecycle":{"type":"lost","reason":"shutdown","error":null,"exitCode":null,"signal":null,"stderrTail":null}}
+{"type":"event","event":"log","record":{"event":"lost","level":"error","name":"demo","clientId":"c2","reason":"shutdown","error":null,"exitCode":null,"signal":null,"message":"the backend is lost"}}
+{"type":"command","id":6,"command":"close","backend":1}
+{"type":"reply","id":6,"command":"close","result":{}}

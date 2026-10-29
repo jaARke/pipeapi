@@ -1,0 +1,33 @@
+---
+title: A spawned backend's stdio
+description: Where a spawned backend's standard input, output and error go, how a connector drains them, and the tail of stderr it keeps.
+heading: true
+sidebar:
+  order: 8
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+
+Standard input, output and error carry nothing of the protocol, as [stdio](/pipeapi/reference/protocol-v1/lifetime/#stdio) says. When a connector spawns the backend, the app chooses where each stream goes with <Cite name="stdin" connectorApi="options" />, <Cite name="stdout" connectorApi="options" /> and <Cite name="stderr" connectorApi="options" />.
+
+- **stdin** reads the null device by default, so a backend that reads its input, such as with `input()`, gets end-of-file at once rather than waiting forever. `inherit` gives it the client's own input, and `pipe` a stream the `Backend` exposes for the app to write to. The app may also supply a stream of its own.
+- **stdout and stderr** go to the connector's log by default: the connector reads each stream and logs each line as a <Cite name="backend_output" connectorApi="log_events" /> record, at the same level for both streams, since uvicorn writes its own informational records to stderr. `discard` reads a stream and drops it, and `inherit` gives the backend the client's own. The app may also supply a sink of its own, such as a callback, a Node `Writable`, a Go `io.Writer`, a .NET `TextWriter` or a file.
+- `inherit` suits a console app in development, such as to use `breakpoint()` in the backend. A GUI app has no console to share, and when both processes share a terminal, what the user types may go to either one.
+
+Each connector's issue settles its language's forms: the streams and sinks it accepts, and how the `Backend` exposes a piped stdin.
+
+## Draining
+
+A connector pipes every stream that isn't `inherit`, and it MUST read each one as fast as the backend writes to it, whatever the stream's destination does, so the backend never blocks on a full pipe.
+
+- A destination slower than the backend gets the stream through a queue that holds at most <Cite name="output_queue_maximum" connectorApi="constants" /> of it. While the queue is full, the connector drops what the backend writes, and once it has room again, it logs <Cite name="output_dropped" connectorApi="log_events" /> with how much it dropped.
+- To log a stream, the connector splits it into lines at each line feed, removes a carriage return before one, and decodes each line as UTF-8, replacing invalid bytes with U+FFFD. A line longer than <Cite name="output_line_maximum" connectorApi="constants" /> is logged in pieces no longer than that, split between characters. A sink that takes lines gets them the same way, and a sink that takes bytes gets them as the connector reads them.
+- When the backend exits, the connector reads each pipe to its end before it reports the exit, but for at most <Cite name="output_end_wait" connectorApi="constants" />, since a process the backend started may hold the pipe open.
+
+## The stderr tail
+
+Unless stderr is `inherit`, the connector keeps the last <Cite name="stderr_tail" connectorApi="constants" /> of what the backend wrote to it, decoded as logged lines are, and drops a partial first line when the kept part holds a whole one. <Cite name="startup_failed" connectorApi="errors" /> and <Cite name="lost" connectorApi="events" /> carry it, so an app can show why its backend failed.
+
+## No console window on Windows
+
+On Windows, a connector MUST start the backend with the `CREATE_NO_WINDOW` creation flag unless one of its streams is `inherit`, so that a console program, such as `python.exe`, opens no console window when a GUI app starts it. Node's `windowsHide` option does this. With `inherit`, the backend shares the client's console instead. Each connector's issue settles how its language sets the flag.

@@ -2,6 +2,7 @@
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
 	"title": "Connector API",
 	"description": "The options, lifecycle events, errors and log records every pipeapi connector shares, as JSON can carry them, and the fixed values every connector uses. Each language offers them in its own idiom.",
+	"x-status": "draft",
 	"$defs": {
 		"options": {
 			"description": "The options connect() takes, every one of them optional. A language may also accept a value JSON can't carry where an option's description says so, such as a stream.",
@@ -13,8 +14,8 @@
 					"x-environment-variable": "PIPEAPI_ENDPOINT"
 				},
 				"transport": {
-					"description": "The transport of the endpoint the connector generates, named by its URL's scheme. Unset, it is a named pipe on Windows and a Unix domain socket elsewhere. A given endpoint ignores it.",
-					"enum": ["npipe", "unix", "tcp"]
+					"description": "The transport of the endpoint the connector generates. Unset, it is a named pipe on Windows and a Unix domain socket elsewhere. A given endpoint ignores it.",
+					"$ref": "#/$defs/transport"
 				},
 				"token": {
 					"description": "The token the backend and its clients share, which a given endpoint needs. The connector generates one only with the endpoint it generates.",
@@ -228,12 +229,16 @@
 					"required": ["endpoint"]
 				},
 				{
-					"description": "The endpoint's transport doesn't exist on this platform, such as a named pipe on Linux.",
+					"description": "The transport of the endpoint, or the one the transport option names, doesn't exist on this platform, such as a named pipe on Linux.",
 					"properties": {
 						"code": { "const": "unsupported_transport" },
-						"endpoint": { "description": "The endpoint as the connector was given it.", "type": "string" }
+						"transport": { "description": "The transport the platform lacks.", "$ref": "#/$defs/transport" },
+						"endpoint": {
+							"description": "The endpoint as the connector was given it, or null when the transport option named the transport.",
+							"type": ["string", "null"]
+						}
 					},
-					"required": ["endpoint"]
+					"required": ["transport", "endpoint"]
 				},
 				{
 					"description": "The OS couldn't start the command, such as when it doesn't exist or isn't executable.",
@@ -480,6 +485,10 @@
 			"title": "whole seconds or never",
 			"description": "A duration in whole seconds, or the word never, as the protocol's environment variables for graces and TTL take it.",
 			"anyOf": [{ "type": "integer", "minimum": 0 }, { "const": "never" }]
+		},
+		"transport": {
+			"description": "A transport, named by its endpoint URL's scheme.",
+			"enum": ["npipe", "unix", "tcp"]
 		},
 		"output": {
 			"description": "Where a spawned backend's output goes: forwarded to the connector's log, discarded, or to the client's own. A sink the app supplies is also accepted, in its language's form.",

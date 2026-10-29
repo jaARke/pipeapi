@@ -1,31 +1,37 @@
-import base64
-import hashlib
 import hmac
 import json
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal, NotRequired, TypedDict
 
 import pytest
 
+from runner.proofs import (
+    ENROLLMENT_MISTAKES,
+    HELLO_MISTAKES,
+    EnrollmentMistake,
+    HelloMistake,
+    ProofInput,
+    decode_b64u_32,
+    encode_b64u_32,
+    enrollment_header,
+    enrollment_proof_input,
+    hello_proof_input,
+)
+
 VECTORS: Final = Path(__file__).resolve().parents[2] / "protocol" / "v1" / "vectors"
 
-# protocol/v1/registry.yaml's constants.hello_label and constants.enrollment_label.
-HELLO_LABEL: Final = b"pipeapi-hello-v1"
-ENROLLMENT_LABEL: Final = b"pipeapi-enroll-v1"
-
-SEPARATOR: Final = b"\x00"
-# A nonce or a challenge.
-RANDOM_BYTES: Final = 32
-PID_BYTES: Final = 4
 # The flags that describe a proof case's input. Every other flag of a proof case names
-# the one mistake its proof was computed with, which the test derives.
+# the one mistake its proof was computed with, which runner.proofs derives.
 PROOF_INPUT_FLAGS: Final = frozenset(
     {"GeneratedToken", "UserToken", "MultiByteToken", "PidRange", "UntrimmedToken"}
 )
+MISTAKES_OF: Final[Mapping[str, frozenset[str]]] = {
+    "hello_proof": HELLO_MISTAKES,
+    "enrollment_proof": ENROLLMENT_MISTAKES,
+}
 
 UNIX_PREFIX: Final = "unix://"
 NPIPE_PREFIX: Final = "npipe:////./pipe/"
@@ -109,18 +115,6 @@ class InvalidEndpoint(Exception):
     """The endpoint breaks the grammar, as given or after expansion."""
 
 
-@dataclass(frozen=True)
-class ProofInput:
-    """The key and the message a proof's HMAC-SHA256 is computed from."""
-
-    key: bytes
-    message: bytes
-
-    @property
-    def proof(self) -> bytes:
-        return hmac.digest(self.key, self.message, hashlib.sha256)
-
-
 def file_name(kind: str) -> str:
     return f"{kind.replace('_', '-')}.json"
 
@@ -147,87 +141,45 @@ def case_ids[CaseT: Case](vectors: VectorFile[CaseT]) -> list[str]:
     return [f"{vectors['kind']}-tcId{case['tcId']}" for case in vectors["tests"]]
 
 
-def encode_base64url(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).decode().rstrip("=")
+def hello_mistake(flag: str) -> HelloMistake:
+    for mistake in HELLO_MISTAKES:
+        if mistake == flag:
+            return mistake
+    pytest.fail(f"runner.proofs derives no hello proof for the flag {flag}")
 
 
-def decode_base64url_32(text: str) -> bytes:
-    """Decode 32 bytes from unpadded, canonical base64url, refusing any other form."""
-    decoded = base64.urlsafe_b64decode(text + "=")
-    assert len(decoded) == RANDOM_BYTES and encode_base64url(decoded) == text, (
-        f"{text!r} isn't canonical base64url of {RANDOM_BYTES} bytes"
+def enrollment_mistake(flag: str) -> EnrollmentMistake:
+    for mistake in ENROLLMENT_MISTAKES:
+        if mistake == flag:
+            return mistake
+    pytest.fail(f"runner.proofs derives no enrollment proof for the flag {flag}")
+
+
+def hello_case_input(case: HelloProofCase, flag: str | None) -> ProofInput:
+    """The case's proof input, by the rules or with the mistake a flag names."""
+    mistake = None if flag is None else hello_mistake(flag)
+    if mistake == "RelayedProof":
+        assert "otherPid" in case, f"a case flagged {mistake} gives it"
+    return hello_proof_input(
+        case["token"],
+        case["nonce"],
+        case["pid"],
+        mistake,
+        other_pid=case.get("otherPid"),
     )
-    return decoded
 
 
-def token_key(token: str) -> bytes:
-    """The token's text, never what it decodes to, whatever it looks like."""
-    return token.encode()
-
-
-def encode_pid(pid: int) -> bytes:
-    return pid.to_bytes(PID_BYTES, "big")
-
-
-def hello_proof_input(case: HelloProofCase, mistake: str | None) -> ProofInput:
+def enrollment_case_input(case: EnrollmentProofCase, flag: str | None) -> ProofInput:
     """The case's proof input, by the rules or with the mistake a flag names."""
-    key = token_key(case["token"])
-    label = HELLO_LABEL
-    separator = SEPARATOR
-    nonce = decode_base64url_32(case["nonce"])
-    pid = encode_pid(case["pid"])
-    match mistake:
-        case None:
-            pass
-        case "WrongLabel":
-            label = ENROLLMENT_LABEL
-        case "MissingSeparator":
-            separator = b""
-        case "DecodedTokenKey":
-            key = decode_base64url_32(case["token"])
-        case "TrimmedTokenKey":
-            key = token_key(case["token"].strip(" "))
-        case "NonceAsText":
-            nonce = case["nonce"].encode()
-        case "PidLittleEndian":
-            pid = case["pid"].to_bytes(PID_BYTES, "little")
-        case "PidAsText":
-            pid = str(case["pid"]).encode()
-        case "RelayedProof":
-            assert "otherPid" in case, f"a case flagged {mistake} gives otherPid"
-            pid = encode_pid(case["otherPid"])
-        case _:
-            pytest.fail(f"the test derives no hello proof for the flag {mistake}")
-    return ProofInput(key, label + separator + nonce + pid)
-
-
-def enrollment_proof_input(
-    case: EnrollmentProofCase, mistake: str | None
-) -> ProofInput:
-    """The case's proof input, by the rules or with the mistake a flag names."""
-    key = token_key(case["token"])
-    label = ENROLLMENT_LABEL
-    separator = SEPARATOR
-    challenge = decode_base64url_32(case["challenge"])
-    match mistake:
-        case None:
-            pass
-        case "WrongLabel":
-            label = HELLO_LABEL
-        case "MissingSeparator":
-            separator = b""
-        case "DecodedTokenKey":
-            key = decode_base64url_32(case["token"])
-        case "ChallengeAsText":
-            challenge = case["challenge"].encode()
-        case "OtherChallenge":
-            assert "otherChallenge" in case, (
-                f"a case flagged {mistake} gives otherChallenge"
-            )
-            challenge = decode_base64url_32(case["otherChallenge"])
-        case _:
-            pytest.fail(f"the test derives no enrollment proof for the flag {mistake}")
-    return ProofInput(key, label + separator + challenge)
+    mistake = None if flag is None else enrollment_mistake(flag)
+    if mistake == "OtherChallenge":
+        assert "otherChallenge" in case, f"a case flagged {mistake} gives it"
+    return enrollment_proof_input(
+        case["token"],
+        case["challenge"],
+        mistake,
+        other_challenge=case.get("otherChallenge"),
+    )
 
 
 def check_proof(
@@ -236,17 +188,17 @@ def check_proof(
 ) -> None:
     """Check the proof as a verifier would, and an invalid one against its mistake."""
     rules = proof_input(None)
-    matches = hmac.compare_digest(rules.proof, decode_base64url_32(case["proof"]))
+    matches = hmac.compare_digest(rules.digest, decode_b64u_32(case["proof"]))
     mistakes = [flag for flag in case["flags"] if flag not in PROOF_INPUT_FLAGS]
     if case["result"] == "valid":
         assert mistakes == [], "a valid case's flags all describe its input"
         assert case.get("message") == rules.message.hex()
-        assert matches, f"the proof is {encode_base64url(rules.proof)}"
+        assert matches, f"the proof is {encode_b64u_32(rules.digest)}"
     else:
         assert len(mistakes) == 1, "an invalid case's flags name exactly one mistake"
         [mistake] = mistakes
         assert not matches, "an invalid case's proof is the one the rules give"
-        mistaken = encode_base64url(proof_input(mistake).proof)
+        mistaken = proof_input(mistake).proof
         assert case["proof"] == mistaken, f"the proof isn't the one {mistake} gives"
 
 
@@ -308,7 +260,7 @@ def expand_endpoint(case: PlatformTemplateExpansionCase) -> str:
 def test_the_rules_give_each_hello_proof_case_its_result(
     case: HelloProofCase,
 ) -> None:
-    check_proof(case, partial(hello_proof_input, case))
+    check_proof(case, partial(hello_case_input, case))
 
 
 @pytest.mark.parametrize(
@@ -317,9 +269,20 @@ def test_the_rules_give_each_hello_proof_case_its_result(
 def test_the_rules_give_each_enrollment_proof_case_its_result(
     case: EnrollmentProofCase,
 ) -> None:
-    check_proof(case, partial(enrollment_proof_input, case))
+    check_proof(case, partial(enrollment_case_input, case))
     if case["result"] == "valid":
-        assert case.get("header") == f"{case['challenge']}.{case['proof']}"
+        header = enrollment_header(case["token"], case["challenge"])
+        assert header == f"{case['challenge']}.{case['proof']}"
+        assert case.get("header") == header
+
+
+@pytest.mark.parametrize("kind", MISTAKES_OF)
+def test_the_runner_knows_exactly_the_mistakes_a_proof_vector_file_flags(
+    kind: str,
+) -> None:
+    vectors = VECTOR_FILES[kind]
+    flags = {flag for case in vectors["tests"] for flag in case["flags"]}
+    assert flags - PROOF_INPUT_FLAGS == MISTAKES_OF[kind]
 
 
 @pytest.mark.parametrize(
