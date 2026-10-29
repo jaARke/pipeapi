@@ -292,7 +292,7 @@ class Process:
         Raises:
             StillRunning: The process outlived its kill.
         """
-        if self._program is not None and self._program.is_running():
+        if self._program is not None and not has_ended(self._program):
             self._kill_program(self._program)
         elif self.running():
             self._kill_started()
@@ -323,6 +323,25 @@ class Process:
             self.popen.send_signal(signal.SIGTERM)
 
 
+def has_ended(process: psutil.Process) -> bool:
+    """
+    Tell whether a process psutil names has ended: it's gone, or it's a zombie.
+
+    A zombie has exited, and only its parent can reap it, which a parent that never
+    waits for its children doesn't do, so psutil's own wait would outlast its guard.
+
+    Args:
+        process: The process.
+
+    Returns:
+        Whether it has ended.
+    """
+    try:
+        return not process.is_running() or process.status() == psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return True
+
+
 def end_learned(
     pids: Iterable[int], belongs: Callable[[Mapping[str, str]], bool], trace: Trace
 ) -> None:
@@ -351,13 +370,13 @@ def end_learned(
                 continue
             trace.record("runner", f"PID {pid}, which a backend ran as, killed")
             process.kill()
-            process.wait(KILL_GUARD_SECONDS)
+            _wait_until_ended(process)
         except psutil.NoSuchProcess:
             continue
         except psutil.AccessDenied:
             trace.record("runner", f"PID {pid}, which a backend ran as, denies access")
             failed.append(f"PID {pid}, which denies access")
-        except psutil.TimeoutExpired:
+        except DeadlinePassed:
             failed.append(f"PID {pid}")
     if failed:
         raise StillRunning(", ".join(failed))
@@ -464,3 +483,12 @@ class Processes:
                     failed.append(f"{process.name} (PID {process.pid}): {error}")
         if failed:
             raise StillRunning("; ".join(failed))
+
+
+def _wait_until_ended(process: psutil.Process) -> None:
+    wait_until(
+        lambda: True if has_ended(process) else None,
+        guard=KILL_GUARD_SECONDS,
+        deadline=None,
+        waiting_for=f"PID {process.pid} to end",
+    )

@@ -12,7 +12,7 @@ import pytest
 
 from reference_app.environment import LOG_VARIABLE
 from runner import processes as processes_module
-from runner.deadlines import Deadline
+from runner.deadlines import Deadline, wait_until
 from runner.processes import (
     KILL_GUARD_SECONDS,
     ForeignProcess,
@@ -21,6 +21,7 @@ from runner.processes import (
     StdinStuck,
     StillRunning,
     end_learned,
+    has_ended,
 )
 from runner.trace import Trace
 from runner.uvicorn_server import PROJECT, Server, ServerDidNotStart, run_server
@@ -66,10 +67,17 @@ def start_parent(processes: Processes) -> tuple[Process, int, int]:
 
 
 def end(pid: int) -> None:
+    # A killed grandchild stays a zombie until its parent reaps it, so it ends once
+    # it's a zombie, as the runner judges it.
     with suppress(psutil.NoSuchProcess):
         left = psutil.Process(pid)
         left.kill()
-        left.wait(KILL_GUARD_SECONDS)
+        wait_until(
+            lambda: True if has_ended(left) else None,
+            guard=KILL_GUARD_SECONDS,
+            deadline=None,
+            waiting_for=f"PID {pid} to end",
+        )
 
 
 def finishes(call: Callable[[], object], seconds: float) -> None:
@@ -114,16 +122,16 @@ def test_a_pid_that_isnt_the_process_or_a_descendant_is_refused(
 
 
 def test_a_process_whose_program_ended_first_is_killed_itself(trace: Trace) -> None:
-    processes = Processes(trace)
-    process, program, child = start_parent(processes)
-    try:
-        process.identify_program(child)
-        end(child)
-        processes.close()
-        assert not process.running()
-        assert process.killed
-    finally:
-        end(program)
+    with Processes(trace) as processes:
+        process, program, child = start_parent(processes)
+        try:
+            process.identify_program(child)
+            end(child)
+            processes.close()
+            assert not process.running()
+            assert process.killed
+        finally:
+            end(program)
 
 
 def test_a_wrapper_that_outlives_its_killed_program_is_killed_too(
