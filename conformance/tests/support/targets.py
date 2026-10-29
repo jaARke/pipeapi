@@ -4,8 +4,8 @@ from typing import Final
 
 import httpx2
 
-from tests.support.observations import Observation, read_observations
-from tests.support.server import Server
+from runner.observations import Observation, read_observations
+from runner.uvicorn_server import Server
 
 # A variable each target's environment holds, which the environment probe reports.
 PROBE_VARIABLE: Final = "REFERENCE_APP_TEST_PROBE"

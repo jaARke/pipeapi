@@ -1,9 +1,5 @@
 import "../settings.just"
 
-# pyright's wrapper otherwise asks PyPI for the newest pyright on every run, so the check
-# would reach the network and warn whenever a newer one is out.
-export PYRIGHT_PYTHON_IGNORE_WARNINGS := "1"
-
 # The reference app's Python floor, which ruff's per-file-target-version in pyproject.toml
 # holds too. pyright checks the app against it in a run of its own, since an execution
 # environment's version leaves typeshed's version checks at the project's Python.
@@ -13,13 +9,22 @@ reference_app_python := "3.10"
 default:
     @just --list
 
-# Check the conformance project as a pull request must: lint, format, types and tests.
+# Check the conformance project as a pull request must: lint, format, types, the import contracts, the tests and the suite's baseline run.
 check:
     uv run --locked ruff check
     uv run --locked ruff format --check
     uv run --locked pyright
     uv run --locked pyright --pythonversion {{ reference_app_python }} reference_app
+    uv run --locked lint-imports
     uv run --locked pytest
+
+# Run the conformance suite against one connector, by the name its adapter.yaml gives; baseline runs the baseline and the server cases.
+run connector:
+    uv run --locked pytest runner --connector {{ connector }}
+
+# Run one conformance case, by its ID, against one connector.
+case id connector="baseline":
+    uv run --locked pytest runner --connector {{ connector }} --case {{ id }}
 
 # Apply ruff's fixes and its formatting.
 fix:

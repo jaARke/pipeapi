@@ -1,20 +1,20 @@
 import { defineRouteMiddleware } from '@astrojs/starlight/route-data';
-import {
-	connectorApiPageSlug,
-	connectorApiStatus,
-	draftProtocolVersions,
-	protocolVersionOfPage,
-} from './protocol';
+import { documentStatus } from './components/protocol/contract';
+import { specDocumentOfPage } from './protocol';
+import { checkLabels, flattenRouteGroups, markDraftDocuments } from './sidebar';
 
-// A draft protocol version's page and the route pages starlight-openapi generates under it carry
-// a banner, as does the connector API's page while it is a draft. The plugin's pages have no
-// frontmatter, so the banner is set here for all of them, from where each status is stated.
-export const onRequest = defineRouteMiddleware((context) => {
+// A draft document's pages carry a banner, the route pages starlight-openapi generates among them,
+// and its sidebar group a badge, from the status the contract's file states. The plugin's pages
+// have no frontmatter, so the banner is set here for all of them. The sidebar changes wait for the
+// plugin's middleware, which adds the route pages to the sidebar after this one runs.
+export const onRequest = defineRouteMiddleware(async (context, next) => {
 	const route = context.locals.starlightRoute;
-	const version = protocolVersionOfPage(route.id);
-	const draftProtocol = version !== undefined && draftProtocolVersions.includes(version);
-	const draftConnectorApi = route.id === connectorApiPageSlug && connectorApiStatus === 'draft';
-	if (draftProtocol || draftConnectorApi) {
+	const document = specDocumentOfPage(route.id);
+	if (document !== undefined && (await documentStatus(document)) === 'draft') {
 		route.entry.data.banner = { content: 'This page is a draft.' };
 	}
+	await next();
+	await flattenRouteGroups(route.sidebar);
+	await markDraftDocuments(route.sidebar);
+	checkLabels(route.sidebar);
 });

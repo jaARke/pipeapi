@@ -1,14 +1,8 @@
-# The conformance project
+# The reference app
 
-`conformance/` is the conformance project ([#5](https://github.com/jaARke/pipeapi/issues/5)). It holds the reference app, a FastAPI app whose routes and settings give the conformance cases something to exercise and observe, and the app's own tests. Its tests also check the protocol's files: the test vectors, through a second implementation of their rules, and the examples of streams in each `openapi.yaml`, against their item schemas. It's a Python project that follows the [Python projects](python.md) conventions.
+The reference app is a FastAPI app in `conformance/reference_app/` whose routes and settings give the conformance cases something to exercise and observe. This page is for a runner that starts the app as a backend and observes it from outside, as the conformance runner does in `runner/uvicorn_server.py`.
 
-`just conformance::check` checks the project as a pull request must, and `just conformance::fix` applies ruff's fixes and formatting. CONTRIBUTING.md's [prerequisites](../../CONTRIBUTING.md#prerequisites) say what each needs.
-
-## Running the reference app
-
-This section is for a runner that starts the app as a backend and observes it from outside, as the conformance cases do.
-
-### Starting it
+## Starting it
 
 The app's import path is `reference_app.main:app`. Serve it from `conformance/`, in the project's environment:
 
@@ -18,7 +12,7 @@ uv run --locked python -m uvicorn reference_app.main:app --host 127.0.0.1 --port
 
 A runner that already runs in the project's environment starts the same `python -m uvicorn` command with its own interpreter. `--lifespan on` makes the lifespan required, since the `startup` record a runner waits for comes from it. A failure inside the app's lifespan fails the start under either setting, since Starlette reports it as a failed startup. An error the app raises on the lifespan scope before Starlette's handler, such as while building its middleware, differs. Under uvicorn's default, `auto`, uvicorn takes it for an app without lifespan support and serves the app without a `startup` record, so a runner waits until its own deadline. Under `on`, the start fails at once.
 
-### Its settings
+## Its settings
 
 The app reads its settings from these variables once, as `reference_app.main` is imported. `reference_app/environment.py` is the one module that reads the environment. An empty value counts as unset.
 
@@ -28,7 +22,7 @@ The app reads its settings from these variables once, as `reference_app.main` is
 | `REFERENCE_APP_FAKE_READY` | A line the app writes to stdout as its lifespan startup begins. It stands in for a readiness signal on stdio, which the protocol doesn't have, so a client that waits for one is caught. |
 | `REFERENCE_APP_FAIL_STARTUP` | A message the lifespan startup fails with, before the app serves. uvicorn then exits with status 3, with the message in the last lines of its stderr. |
 
-### The observation log
+## The observation log
 
 The log records what the app saw, in a file that outlives the process. It's JSON lines: each line is one object with the `event`, the `pid` of the process that saw it, and the event's own fields. Each line is appended in binary, so it ends in LF on every OS, and written before the code that saw the event goes on, so it survives the process being killed. Read only the lines that end in LF, since the last one may still be being written.
 
@@ -42,28 +36,28 @@ The log records what the app saw, in a file that outlives the process. It's JSON
 
 The `request` record comes from inside the app, so a request that pipeapi's middleware rejects leaves none, which is how a case shows that the app never ran. The `pid` tells apart backends that share a log one after another. Backends that may run at the same time need logs of their own, since appends from several processes aren't atomic on Windows.
 
-### Knowing when it serves
+## Knowing when it serves
 
 Wait for the `startup` record, then connect. uvicorn binds its socket only after the lifespan startup, so the record comes first. Connecting before then is slow on Windows, which retries a refused connection for about two seconds before failing it.
 
 If the process exits instead, the start failed: a `startup_failure` record and stderr's last lines say why.
 
-### Stopping it
+## Stopping it
 
 - **On Linux and macOS,** send SIGTERM.
 - **On Windows,** start the app with `CREATE_NEW_PROCESS_GROUP` and send `CTRL_BREAK_EVENT`, which uvicorn handles as SIGBREAK. Ctrl+Break reaches a whole process group, and the group of its own keeps it from reaching the runner.
 
 Either way uvicorn shuts down, then raises the signal again, so the exit status reports the signal rather than success: on Windows it's 3, and on Linux and macOS the process ends by SIGTERM. Judge a stop by the `shutdown` record, not by the exit status. A process killed hard leaves no `shutdown` record.
 
-### Its PID on Windows
+## Its PID on Windows
 
 On Windows, a virtual environment's `python.exe` is a launcher that runs the base interpreter as its child, so the PID that starting it returns isn't the app's. Take the app's PID from the log's `pid`, or from the `pid` that `/seen` reports. Killing the launcher ends the app as well.
 
-### Routes
+## Routes
 
-The routes are grouped as the app's routers group them, each with the [#5](https://github.com/jaARke/pipeapi/issues/5) cases it serves. Each router module holds its routes' parameters, defaults and deadlines in full. FastAPI also serves the app's OpenAPI schema at `/openapi.json`, from which a typed client is generated; the schema leaves out `/seen`, which a generated client has no use for.
+The routes are grouped as the app's routers group them, each with the [#5](https://github.com/jaARke/pipeapi/issues/5) cases it serves. Each router module holds its routes' parameters, defaults and deadlines in full. FastAPI also serves the app's OpenAPI schema at `/openapi.json`, from which a typed client is generated; the schema leaves out `/seen`, which a generated client has no use for. Every route in the schema names its operation ID, and building the app fails on one that doesn't. Each adapter names its typed client's methods by these IDs, so an ID that FastAPI derived from a function's name and path would rename every adapter's methods whenever either changed.
 
-**Items** ([`routers/items.py`](../../conformance/reference_app/routers/items.py)), a typed API over an in-memory store that each app instance holds, so a new backend starts empty:
+**Items** ([`routers/items.py`](../../../conformance/reference_app/routers/items.py)), a typed API over an in-memory store that each app instance holds, so a new backend starts empty:
 
 | Route | Answers | Cases |
 | --- | --- | --- |
@@ -72,7 +66,7 @@ The routes are grouped as the app's routers group them, each with the [#5](https
 | `POST /items/form` | 201 and the created item, from a URL-encoded or multipart form, whose `tags` may repeat | Whole body |
 | `DELETE /items/{item_id}` | 204 with no body, or 404 for an item the store lacks | 204 |
 
-**Requests** ([`routers/requests.py`](../../conformance/reference_app/routers/requests.py)):
+**Requests** ([`routers/requests.py`](../../../conformance/reference_app/routers/requests.py)):
 
 | Route | Answers | Cases |
 | --- | --- | --- |
@@ -82,14 +76,14 @@ The routes are grouped as the app's routers group them, each with the [#5](https
 | `GET /status/{code}`, `POST /status/{code}` | The final status asked for, as the app itself answers: 204, 205 and 304 with no body, any other with `{"status": code}`, and 401 with a `WWW-Authenticate: Bearer` challenge and no pipeapi marker | 204; 401 from the app itself |
 | `GET /barrier/{name}?parties=<n>` | Holds each request until `n` wait at the barrier of that name, where the first request's `n` holds, then answers each with `filled` true, so requests that all answer so were in flight together. A barrier still short at its deadline answers its parties with `filled` false. Each answer says how many had `arrived`. | Concurrent requests |
 
-**Streams** ([`routers/streams.py`](../../conformance/reference_app/routers/streams.py)), which record a client that leaves early as a `disconnect`:
+**Streams** ([`routers/streams.py`](../../../conformance/reference_app/routers/streams.py)), which record a client that leaves early as a `disconnect`:
 
 | Route | Answers | Cases |
 | --- | --- | --- |
 | `GET /events?count=<n>&end=<bool>` | Server-sent events 1 to `count`, each with `id: <i>` and `data: event <i>`, or only those after a `Last-Event-ID` header (400 for an ID it never sent). The stream then stays open until the client leaves or the router's hold deadline passes; with `end=true`, it ends after the last event. | SSE endpoint; abort mid-stream; SSE stream across a restart |
 | WebSocket `/ws?close_after=<n>&close_code=<c>` | Echoes each text and binary message. After `n` messages it closes with code `c`, from the range WebSocket keeps for private use, and the reason "closed by the server"; after the hold deadline passes with no message, with the reason "idle". | WebSocket echo; server closes the socket |
 
-**Process** ([`routers/process.py`](../../conformance/reference_app/routers/process.py)), which shows what a backend's process was given:
+**Process** ([`routers/process.py`](../../../conformance/reference_app/routers/process.py)), which shows what a backend's process was given:
 
 | Route | Answers | Cases |
 | --- | --- | --- |

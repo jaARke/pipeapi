@@ -1,0 +1,18 @@
+---
+title: Lifecycle events
+description: The events a Backend emits as its lease and its backend change, and the reasons a Backend is lost.
+heading: true
+sidebar:
+  order: 4
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+import ConnectorApiTable from '../../../../components/protocol/ConnectorApiTable.astro';
+
+A `Backend` emits these events, each in its language's native event form, such as an `EventEmitter`'s events in Node, and each connector's issue settles its form. An event's fields are properties named by the language's conventions.
+
+<ConnectorApiTable section="events" />
+
+A <Cite name="lost" connectorApi="events" /> event's reason is one of these, which apps match on as they do error codes:
+
+<ConnectorApiTable section="lost_reasons" />

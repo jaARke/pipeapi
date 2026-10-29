@@ -1,0 +1,46 @@
+---
+title: Conformance cases
+description: The cases the conformance suite runs against pipeapi's server and every connector, what each expects, and the sections and table rows of the spec each covers.
+sidebar:
+  order: 11
+---
+
+import CaseList from '../../../../components/conformance/CaseList.astro';
+import ComponentTable from '../../../../components/conformance/ComponentTable.astro';
+import CoverageMap from '../../../../components/conformance/CoverageMap.astro';
+import InvariantTable from '../../../../components/conformance/InvariantTable.astro';
+import ContractLink from '../../../../components/protocol/ContractLink.astro';
+
+The conformance suite ([#5](https://github.com/jaARke/pipeapi/issues/5)) holds pipeapi's server and every connector to [protocol v1](/pipeapi/reference/protocol-v1/) and the [connector API](/pipeapi/reference/connector-api/). <ContractLink path="conformance/cases/cases.yaml" /> defines each of its cases once, and this page renders them, with the sections and table rows of the two documents each one covers. Once protocol v1 is released, a case's ID, its expectation, its kind, what it talks to, needs and relies on, and where it runs never change, nor do an invariant's ID, expectation and needs, and changed behavior is a new case.
+
+## Reading a case
+
+- **Kind.** A server case runs once against pipeapi's server, through the suite's own client. A connector case runs once for each connector, through that connector's adapter.
+- **Talks to.** The reference app, which pipeapi's server serves, or the suite's fake server, which stands in for a backend; a case that talks to nothing checks a refusal before any connection. On loopback, either listens on a fixed port, with no rendezvous file, unless the case names a generated endpoint or the rendezvous file.
+- **Where it runs.** On every transport its platform has, unless it names some, and on both platforms, unless it names one. A case whose result doesn't depend on the transport runs once on each platform. A case that names vias runs once through each, the connector's untyped request and the `Backend`'s primitive, as it does on each transport.
+- **Needs.** The components it needs beyond what it talks to. A case that talks to the reference app also needs pipeapi's server and the server's listener on the case's transport, and one that talks to the fake server needs that. The suite skips a case while a component it needs isn't built.
+- **Relies on.** Capabilities only some connectors have, which a connector's adapter declares. The suite skips the case for a connector whose adapter doesn't.
+- **In the baseline too.** The baseline adapter, a plain HTTP client, also runs the case against the reference app under plain uvicorn on loopback, where it needs neither pipeapi's server nor a listener, which proves the suite and the app themselves.
+- **Slow.** The case lasts 15 seconds or more by design, since a fixed duration must pass, such as a lease's TTL or a challenge's lifetime, so the suite gives it longer to finish.
+
+A case checks once something it can observe has happened, such as a record, an event or an exit, not once a set time has passed, unless its rule is about a fixed duration passing, such as a challenge's lifetime or a lease's silence past an HTTP library's read timeout, which it names. An absence, such as no further hello or no event, is checked the same way: once the case observes something that would have shown the event by then, which it names, such as the result of the call that would have caused it, a request sent afterwards, or a second `Backend` whose own outage came later. A duration is checked as a lower bound, or as an upper bound wide enough to say so.
+
+## Components
+
+<ComponentTable />
+
+## Cases
+
+<CaseList />
+
+## Invariants
+
+The suite checks each of these in every case, beside the case's own expectation, once every component the invariant needs is built; until then it skips the invariant, as it skips a case. A violation fails the case, naming the invariant.
+
+<InvariantTable />
+
+## Coverage
+
+Each section and table row of the two documents, with the cases and invariants that cite it. A section or row that none covers says why, and the site's build fails on one that doesn't.
+
+<CoverageMap />

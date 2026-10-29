@@ -1,0 +1,35 @@
+---
+title: Protocol v1
+description: The specification of pipeapi protocol version 1, which every pipeapi server and client implements.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import PageIndex from '../../../../components/PageIndex.astro';
+import ContractLink from '../../../../components/protocol/ContractLink.astro';
+
+Protocol v1 is the protocol between a pipeapi backend's server and its clients. These pages specify it, the conformance cases hold the server and every connector to it, and the reserved routes have a page each.
+
+<PageIndex />
+
+## Conventions
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [BCP 14](https://www.rfc-editor.org/info/bcp14) ([RFC 2119](https://www.rfc-editor.org/rfc/rfc2119), [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174)) when, and only when, they appear in all capitals, as shown here.
+
+The files in <ContractLink path="protocol/v1/" /> are part of this specification. `openapi.yaml` holds the reserved routes, their headers and their bodies; `registry.yaml` holds the names and values an OpenAPI document can't; `rendezvous.schema.json` holds the rendezvous file's shape; and `vectors/` holds the test vectors. The tables of these pages and the route pages render those files. Every environment variable, header pipeapi defines, reserved route, constant, rejection code, duration, exit code, feature flag, lease event type, lease end reason and protocol version they name comes from them, and so does every JSON property name, from `openapi.yaml`'s schemas.
+
+### Terms
+
+- **Backend:** a process that serves an app through the pipeapi server.
+- **Server:** the pipeapi server in a backend. Its middleware answers the reserved routes and checks every request before the app sees it.
+- **Client:** a program that talks to a backend, whether a pipeapi connector or any other program that implements this specification.
+- **Endpoint:** where a backend listens, named by an [endpoint URL](/pipeapi/reference/protocol-v1/endpoints/#endpoint-urls).
+- **Token:** the secret a client and the server share. Each side proves it holds the token, and the token never crosses the wire.
+- **Lease:** a client's lease request, which the server holds open. A backend runs while at least one lease is open.
+- **Session:** the client ID and session secret that a lease's first event gives the client, which authenticate its other requests.
+
+### Encodings
+
+- **b64u(n):** n bytes from a cryptographically secure random generator, encoded as base64url ([RFC 4648, section 5](https://www.rfc-editor.org/rfc/rfc4648#section-5)) without padding. An encoder produces the canonical form, in which unused bits are zero, so b64u(32) is 43 characters and the last one's two unused bits are zero. A value that doesn't match the pattern `openapi.yaml` gives it is malformed.
+- **Integers in text,** in headers, environment variables and endpoints, are decimal digits alone, without a sign, spaces or a leading zero, so 0 is the only one that starts with 0. Any other form is malformed.

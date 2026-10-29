@@ -1,6 +1,6 @@
 ---
 import { protocolRouteSlug, type ProtocolVersion } from '../../protocol';
-import { openApiDocument, pageHref } from './contract';
+import { anchorOf, checkTablePage, openApiDocument, pageHref, protocolTablePage } from './contract';
 
 interface Props {
 	readonly version: ProtocolVersion;
@@ -8,6 +8,11 @@ interface Props {
 
 const { version } = Astro.props;
 const { routes } = await openApiDocument(version);
+checkTablePage(
+	Astro.locals.starlightRoute.id,
+	protocolTablePage(version, 'routes'),
+	`protocol/${version}/openapi.yaml's routes`
+);
 ---
 
 <table>
@@ -20,7 +25,7 @@ const { routes } = await openApiDocument(version);
 	</thead>
 	<tbody>
 		{routes.map(({ path, method, operationId, description }) => (
-			<tr>
+			<tr id={anchorOf('routes', operationId)}>
 				<td>
 					<a href={pageHref(protocolRouteSlug(version, operationId))}>
 						<code>{path}</code>

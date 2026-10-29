@@ -1,0 +1,17 @@
+---
+interface Props {
+	/** Plain text, in which text between backticks renders as code. */
+	readonly text: string;
+	/** Where the text comes from, for the error a stray backtick fails the build with. */
+	readonly where: string;
+}
+
+const { text, where } = Astro.props;
+const parts = text.split('`');
+// Every second part sits between backticks, so a stray backtick leaves an even count of parts.
+if (parts.length % 2 === 0) {
+	throw new Error(`${where} has a backtick that opens code it never closes.`);
+}
+---
+
+{parts.map((part, index) => (index % 2 === 1 ? <code>{part}</code> : part))}

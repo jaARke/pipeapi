@@ -3,6 +3,8 @@
 		"EditorConfig.EditorConfig",
 		"github.vscode-github-actions",
 		"nefrob.vscode-just-syntax",
+		// Validates ruff.base.toml against the schema its first line names
+		"tamasfe.even-better-toml",
 		// Validates protocol/: each registry against the schema its modeline names, and each
 		// openapi.yaml against the OpenAPI schema SchemaStore associates with that name
 		"redhat.vscode-yaml"

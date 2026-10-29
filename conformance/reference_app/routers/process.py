@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field, model_validator
 
 from reference_app import environment
+from reference_app.routers.operations import require_operation_id
 
 INPUT_DEADLINE_SECONDS: Final = 5.0
 """
@@ -107,9 +108,9 @@ def create_router() -> APIRouter:
     Returns:
         The router.
     """
-    router = APIRouter()
+    router = APIRouter(generate_unique_id_function=require_operation_id)
 
-    @router.post("/environment")
+    @router.post("/environment", operation_id="probe_environment")
     async def probe_environment(
         query: EnvironmentQuery,
     ) -> environment.EnvironmentReport:
@@ -122,7 +123,7 @@ def create_router() -> APIRouter:
         """
         return environment.probe(query.names, query.containing)
 
-    @router.post("/input")
+    @router.post("/input", operation_id="read_input")
     async def read_input() -> InputOutcome:
         """
         Call `input()` and report what it gave, waiting on it no longer than a deadline.
@@ -159,7 +160,7 @@ def create_router() -> APIRouter:
         except asyncio.TimeoutError:
             return InputOutcome(outcome="blocked")
 
-    @router.post("/output")
+    @router.post("/output", operation_id="write_output")
     def write_output(request: OutputRequest) -> OutputWritten:
         """
         Write `lines` numbered lines of `width` characters to stdout or stderr.

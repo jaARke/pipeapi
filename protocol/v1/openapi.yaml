@@ -3,7 +3,7 @@ info:
   title: pipeapi protocol
   version: '1'
   summary: The routes pipeapi reserves on every backend, in protocol version 1.
-  description: The middleware of every pipeapi backend answers these routes itself, before the app sees a request. The protocol v1 page of the guide site states the rules that govern them.
+  description: The middleware of every pipeapi backend answers these routes itself, before the app sees a request. The guide site's specification of protocol v1 states the rules that govern them.
   contact:
     name: pipeapi
     url: https://github.com/jaARke/pipeapi
@@ -17,7 +17,6 @@ servers:
 tags:
   - name: reserved
     summary: Reserved routes
-    description: The routes under /__pipeapi/, which every pipeapi backend serves.
 paths:
   /__pipeapi/ready:
     get:
@@ -45,6 +44,7 @@ paths:
                     challenge: K__r8ZEtXC6w2hRdti00Q9uuy6k85Gw_GuUJFU4--9k
         '400':
           description: Refused by pipeapi, with invalid_host on loopback or invalid_nonce.
+          x-rejections: [invalid_host, invalid_nonce]
           headers:
             X-PipeAPI-Rejected:
               $ref: '#/components/headers/X-PipeAPI-Rejected'
@@ -88,6 +88,7 @@ paths:
           $ref: '#/components/responses/bad_request'
         '401':
           description: Refused by pipeapi, with enrollment_failed.
+          x-rejections: [enrollment_failed]
           headers:
             X-PipeAPI-Rejected:
               $ref: '#/components/headers/X-PipeAPI-Rejected'
@@ -169,6 +170,9 @@ components:
         type: string
         pattern: ^[A-Za-z0-9_-]{1,64}\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$
   headers:
+    # Each response that carries this header lists the codes it may carry in x-rejections, each a
+    # rejection in registry.yaml with the response's status, and gives no content, since a
+    # rejection's body is empty.
     X-PipeAPI-Rejected:
       description: The rejection code, on every response pipeapi produces itself to refuse a request. Its presence means the app never saw the request.
       required: true
@@ -185,11 +189,13 @@ components:
   responses:
     bad_request:
       description: Refused by pipeapi, with invalid_host on loopback or unsupported_protocol.
+      x-rejections: [invalid_host, unsupported_protocol]
       headers:
         X-PipeAPI-Rejected:
           $ref: '#/components/headers/X-PipeAPI-Rejected'
     invalid_session:
       description: Refused by pipeapi, with invalid_session.
+      x-rejections: [invalid_session]
       headers:
         X-PipeAPI-Rejected:
           $ref: '#/components/headers/X-PipeAPI-Rejected'
@@ -197,11 +203,13 @@ components:
           $ref: '#/components/headers/WWW-Authenticate'
     origin_forbidden:
       description: Refused by pipeapi on loopback, with origin_forbidden, since the request carries an Origin header.
+      x-rejections: [origin_forbidden]
       headers:
         X-PipeAPI-Rejected:
           $ref: '#/components/headers/X-PipeAPI-Rejected'
     draining:
       description: Refused by pipeapi, with draining, since the backend is stopping.
+      x-rejections: [draining]
       headers:
         X-PipeAPI-Rejected:
           $ref: '#/components/headers/X-PipeAPI-Rejected'

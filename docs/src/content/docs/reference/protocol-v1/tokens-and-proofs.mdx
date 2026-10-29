@@ -1,0 +1,50 @@
+---
+title: Tokens and proofs
+description: The token a backend's clients and server share, and the hello and enrollment proofs by which each side shows it holds the token.
+sidebar:
+  order: 3
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+import ContractLink from '../../../../components/protocol/ContractLink.astro';
+
+## Tokens
+
+A backend's clients and its server share one token, which is a non-empty string.
+
+- A client generates a token only with an endpoint it [generates](/pipeapi/reference/protocol-v1/endpoints/#generated-endpoints): b64u(32), which carries 256 bits of entropy. A client given an endpoint is given its token too.
+- A token the user gives SHOULD carry at least 128 bits of entropy, and comes from configuration the user controls, never from the app's own files, which any process of the same user can read.
+- The token never crosses the wire: each side [proves](#proofs) it holds it.
+- A client and a server MUST NOT write the token or a session secret to a log, stdout or stderr.
+- A client MUST NOT pass the token to a process that runs web content, such as an Electron renderer.
+
+## Proofs
+
+Both proofs are HMAC-SHA256, keyed by the token's text, exactly as given, encoded as UTF-8. The key is never the token trimmed or base64-decoded, so a token of any form works and every implementation keys HMAC the same way. A proof's input is bytes: an ASCII label, one 0x00 byte, then fields of fixed length. Each kind of proof has its own label, so a proof of one kind is never valid as another.
+
+### Hello proof
+
+The hello's `proof` is b64u of the HMAC of these bytes, in order:
+
+| Field | Length in bytes |
+| --- | --- |
+| The label <Cite name="hello_label" section="constants" />, in ASCII | The label's length |
+| 0x00 | 1 |
+| The nonce: the bytes the request's <Cite name="X-PipeAPI-Nonce" /> decodes to | 32 |
+| The hello's `pid`, as an unsigned big-endian integer | 4 |
+
+The hello's `pid` is the PID of the process that created the endpoint's listener, whether the pipe instance, the socket or the loopback listener, which the OS reports to a client as the connection's peer. A server MUST answer hellos only from that process. The proof binds that PID, so a client that can read its peer's PID detects a proof relayed from another server.
+
+### Enrollment proof
+
+The enrollment proof is b64u of the HMAC of these bytes, in order:
+
+| Field                                                                    | Length in bytes    |
+| ------------------------------------------------------------------------ | ------------------ |
+| The label <Cite name="enrollment_label" section="constants" />, in ASCII | The label's length |
+| 0x00                                                                     | 1                  |
+| The challenge: the bytes the hello's `challenge` decodes to              | 32                 |
+
+### Test vectors
+
+The directory <ContractLink path="protocol/v1/vectors/" /> holds test vectors for the hello proof, the enrollment proof and template expansion, in the style of Project Wycheproof: each case is valid or invalid, and an invalid case's flags name the mistake it catches. An implementation SHOULD run them in its tests. Their expected values come from OpenSSL and from these rules, not from any pipeapi code.

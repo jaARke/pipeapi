@@ -1,0 +1,105 @@
+---
+title: Lease loss and outages
+description: How a connector holds its lease, reconnects when the lease ends, and keeps the app's requests and streams working through an outage.
+heading: true
+sidebar:
+  order: 6
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+
+A connector holds its lease from `connect()` until `close()`, and handles the outages that end it, so that the app's requests and the typed client it built keep working while a backend restarts. Requests that don't go through the untyped request or the primitive, such as those over `dial()`, get none of this.
+
+## Holding the lease
+
+- A connector concludes that its lease is lost only when the lease stream ends, as [heartbeats](/pipeapi/reference/protocol-v1/leases/#heartbeats) and [lease loss](/pipeapi/reference/protocol-v1/leases/#lease-loss) say. Heartbeats that stop, a renewal that fails and a request that is rejected never end it.
+- A connector sets no read timeout on the lease request, whatever its HTTP library's default, since heartbeats stop while a backend is paused, such as in a debugger.
+- When the session event gives a TTL, the connector renews its lease at least as often as [lease TTL](/pipeapi/reference/protocol-v1/leases/#lease-ttl) asks, requesting <Cite name="/__pipeapi/renew" version="v1" /> when no other request has carried its session in that time. A renewal that fails logs <Cite name="renewal_failed" connectorApi="log_events" />, and the connector renews again at the next interval.
+- When its lease ends, the connector closes the primitive's idle connections, so no later request goes out on a connection to the backend that ended it.
+
+## Lease loss
+
+When its lease stream ends, a connector acts on the [end reason](/pipeapi/reference/protocol-v1/leases/#lease-end-reasons):
+
+| The lease ended | The connector |
+| --- | --- |
+| With <Cite name="shutdown" section="lease_end_reasons" version="v1" /> | Emits <Cite name="lost" connectorApi="events" /> with the reason <Cite name="shutdown" connectorApi="lost_reasons" /> |
+| With <Cite name="revoked" section="lease_end_reasons" version="v1" /> | Emits <Cite name="lost" connectorApi="events" /> with the reason <Cite name="revoked" connectorApi="lost_reasons" /> |
+| With <Cite name="restart" section="lease_end_reasons" version="v1" />, <Cite name="expired" section="lease_end_reasons" version="v1" /> or a reason it doesn't know, or without an end event | Emits <Cite name="reconnecting" connectorApi="events" /> with the reason, or null without one, then [reconnects](#reconnecting) |
+
+- A connector that spawned the backend reads the lease stream to its end before it acts on the backend's exit, so a backend that sent an end event is handled by that event's reason. It acts on an end event without waiting for the backend to exit, so a <Cite name="lost" connectorApi="events" /> event that follows one carries a null exit status and signal unless the connector saw the exit first. When the backend exits while the lease is still open, the exit ends the lease without an end event.
+- Every <Cite name="reconnecting" connectorApi="events" /> is followed by exactly one of <Cite name="reconnected" connectorApi="events" />, <Cite name="respawned" connectorApi="events" /> or <Cite name="lost" connectorApi="events" />, unless the app calls `close()` first, and the connector emits no other event in between.
+
+## Reconnecting
+
+To reconnect, a connector runs the [connect sequence](/pipeapi/reference/protocol-v1/connecting/#connect-sequence) again as [`connect()`](/pipeapi/reference/connector-api/connecting/#connect) does, as a new client, with these differences:
+
+- It uses the endpoint, the token and the rendezvous file it resolved when `connect()` ran, so it never reads its environment again or generates new ones.
+- It never spawns a backend, except to [respawn](/pipeapi/reference/connector-api/respawn/) one, and it doesn't fail when nothing accepts its connection, as a client without a command would in `connect()`. It keeps trying for the hello instead, until a backend is ready or <Cite name="reconnectBudget" connectorApi="options" /> has passed since the lease ended.
+- A hello or a lease request answered with <Cite name="draining" section="rejections" version="v1" /> counts as no answer, so it keeps trying for the hello within the budget.
+- It negotiates a protocol version and verifies the server again, and treats every other rejection as `connect()` does.
+- Once it holds a new lease, it emits <Cite name="reconnected" connectorApi="events" /> with the old and new client IDs, and `clientId` gives the new one.
+- When the budget passes, or the sequence fails with an error, such as <Cite name="verification_failed" connectorApi="errors" />, it emits <Cite name="lost" connectorApi="events" /> with the reason <Cite name="unavailable" connectorApi="lost_reasons" /> and that error's code, which is <Cite name="connect_timeout" connectorApi="errors" /> when the budget passed.
+- When it spawned the backend and sees the backend exit, it stops waiting for one: it respawns the backend when respawn applies, and otherwise emits <Cite name="lost" connectorApi="events" /> with the reason <Cite name="exited" connectorApi="lost_reasons" />, the exit's status or signal, and the stderr tail.
+
+## Lost
+
+The <Cite name="lost" connectorApi="events" /> event is terminal:
+
+- A connector never reconnects or respawns a `Backend` that is lost, and emits no event after it.
+- Every request waiting for ready, and every request after the event, fails at once with <Cite name="backend_unavailable" connectorApi="errors" />, and so does `dial()`. A request the connector had already written finishes or fails on its own connection, with <Cite name="request_interrupted" connectorApi="errors" /> when that connection drops.
+- A connector that generated the endpoint removes the directory it generated once it sees its backend exit, since it won't start another backend for that endpoint. `close()` still releases what the `Backend` holds.
+- To use a backend again, the app calls `connect()` again, which returns a new `Backend`, and builds its typed client on that `Backend`'s primitive.
+
+## Addresses
+
+A connector resolves a `Backend`'s address as it opens each connection, so every connection the untyped request, the primitive or `dial()` opens goes to the backend that serves the `Backend` now. On loopback with a rendezvous file, the connector reads the file again before each hello it sends, as [rendezvous file](/pipeapi/reference/protocol-v1/endpoints/#rendezvous-file) requires, since a backend that starts again binds another port. A `Backend`'s endpoint and token never change, so its primitive, and the typed client the app built on it, keep working across a reconnect or a respawn.
+
+## Opening connections
+
+- In `connect()`, the first connection to an endpoint the app gave is a single attempt, as [`connect()`](/pipeapi/reference/connector-api/connecting/#connect) says, which waits only for a busy pipe. The hellos after it try again until <Cite name="connectTimeout" connectorApi="options" /> passes.
+- After `connect()`, every connection a `Backend` opens, for its lease, a request or `dial()`, tries again when it fails to connect, until <Cite name="connectTimeout" connectorApi="options" /> has passed since its first attempt.
+- On Windows, a connection that finds every instance of the named pipe busy waits for one to free up, logging <Cite name="pipe_busy" connectorApi="log_events" /> for each attempt, and stops waiting when <Cite name="connectTimeout" connectorApi="options" /> passes, however long its language's runtime would wait on its own, as Node's libuv does in its calls to `WaitNamedPipeW`.
+- A request whose connection can't be opened in that time fails with <Cite name="backend_unavailable" connectorApi="errors" />, and so does `dial()`. While the `Backend` is reconnecting, a request [waits for ready](#waiting-for-ready) instead.
+
+## Waiting for ready
+
+A request through the untyped request or the primitive is unsent until the connector writes some of it to a connection. While the `Backend` is reconnecting, an unsent request:
+
+- waits, and goes out with the new lease's session once the connector holds one;
+- fails at once with <Cite name="backend_unavailable" connectorApi="errors" /> when the `Backend` is lost, with <Cite name="closed" connectorApi="errors" /> when the app closes it, and with its language's own error when its own timeout or cancellation comes first;
+- fails at once with <Cite name="backend_unavailable" connectorApi="errors" /> instead of waiting, when its <Cite name="waitForReady" connectorApi="request_options" /> is false.
+
+Waiting never sends a request twice, since the request hasn't left the client before it goes out.
+
+## Safe retry
+
+A request is in flight from the moment the connector writes some of it until its response arrives in full. When its connection drops while it is in flight:
+
+- Before the response's headers arrive, the connector sends the request again, once, with the session of its current lease, waiting for ready first when it is reconnecting, when all of these hold:
+  - its <Cite name="safeRetry" connectorApi="request_options" /> isn't false;
+  - its method is `GET`, `HEAD` or `OPTIONS`, or it carries an `Idempotency-Key` header;
+  - the connector can send its body again, which it can't for a stream it didn't keep.
+- A request it sends again logs <Cite name="request_retried" connectorApi="log_events" />. Any other request in flight, or one sent again whose connection drops too, fails with <Cite name="request_interrupted" connectorApi="errors" />.
+- After the response's headers arrive, the connector never sends the request again, and reading the rest of the response fails with <Cite name="request_interrupted" connectorApi="errors" />.
+
+`PUT` and `DELETE` are idempotent by HTTP's definition, but an app doesn't always implement them so, so they need an `Idempotency-Key` too, as with Go's `http.Transport`.
+
+## Rejected requests
+
+A response that carries <Cite name="X-PipeAPI-Rejected" version="v1" /> never reached the app, whatever its [rejection code](/pipeapi/reference/protocol-v1/requests/#rejections), so sending the request again is safe whatever its method.
+
+- The connector sends a rejected request again when all of these hold: the code is <Cite name="invalid_session" section="rejections" version="v1" /> or <Cite name="unsupported_protocol" section="rejections" version="v1" />, as it is for a request whose lease has ended; the request's <Cite name="safeRetry" connectorApi="request_options" /> isn't false; and the connector can send its body again. It waits for ready until it holds a lease other than the one whose credentials the request carried, for at most <Cite name="reconnectBudget" connectorApi="options" />, then sends the request again, once, with that lease's credentials.
+- Otherwise, or when the budget passes first, the connector returns the rejection to the app as the response.
+
+## Server-sent events
+
+When the connection of a stream the SSE helper is iterating drops before the server ends the stream, the helper resumes it:
+
+- It sends the stream's request again once the connector holds a lease, with `Last-Event-ID` set to the ID of the last event it received, as a browser's `EventSource` does. Before that, it waits for the reconnection time the stream last set with a `retry` field, or <Cite name="sse_retry_default" connectorApi="constants" /> when the stream set none.
+- It resumes a stream only when the stream's request is a `GET` whose <Cite name="safeRetry" connectorApi="request_options" /> isn't false, and only once it has received an event with an ID, so a stream is never replayed from its start without the app knowing. Otherwise, the iteration fails with <Cite name="request_interrupted" connectorApi="errors" />.
+- A stream it resumed that drops again before it delivers an event fails the iteration with <Cite name="request_interrupted" connectorApi="errors" />, so resuming never loops.
+- It resumes a stream each time it drops after delivering an event, until the `Backend` is lost, when the iteration fails with <Cite name="backend_unavailable" connectorApi="errors" />.
+- A stream the server ends ends the iteration.
+
+An app that wants its streams to survive an outage gives their events IDs. A WebSocket, by contrast, is never resumed, as [WebSockets](/pipeapi/reference/connector-api/websockets/) says.

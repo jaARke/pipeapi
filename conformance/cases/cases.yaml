@@ -1,0 +1,2902 @@
+# yaml-language-server: $schema=cases.schema.json
+# The pre-commit hook check-jsonschema validates this file against the same schema.
+
+areas:
+  endpoint:
+    title: Endpoints
+    description: Endpoint URLs, templates and generated endpoints.
+    cases:
+      # The suite can't set a connector's user, session or PID, so the template vectors' injected contexts stay with each package's tests.
+      endpoint.invalid-refused:
+        title: Invalid endpoints are refused before any spawn or connection
+        expectation: >-
+          For each context-free invalid vector in `vectors/template-expansion.json` for the
+          platform, and each of: a relative `unix://` path; a hostname or wildcard host; text after
+          the port; a port with a leading zero; port 65536, 80 or 443; an unknown or capitalized
+          scheme; an empty pipe name, or one holding `/` or `\`; a pipe path over 256 UTF-16 code
+          units; a stray or doubled brace; an unknown or miscased template; a template in `tcp://`;
+          `{session}` in `unix://`. `connect()` with the endpoint, a token and the spawn wrapper as
+          `command` fails `invalid_endpoint` whose `endpoint` is the text given. The wrapper records
+          no spawn, and for `tcp://localhost:<p>` a runner listener on `127.0.0.1:<p>` records no
+          connection.
+        kind: connector
+        backends: []
+        needs: [spawn-wrapper]
+        once: true
+        covers:
+          - protocol-v1#endpoint-urls
+          - protocol-v1#templates
+          - protocol-v1#ports-80-and-443
+          - protocol-v1#test-vectors
+          - connector-api#validation
+          - connector-api#errors.invalid_endpoint
+      endpoint.port-zero-needs-rendezvous:
+        title: A port-0 endpoint needs its rendezvous file
+        expectation: >-
+          `tcp://127.0.0.1:0` with a token and a command but no `rendezvous` fails
+          `invalid_endpoint`, with no spawn.
+        kind: connector
+        backends: []
+        needs: [spawn-wrapper]
+        once: true
+        covers:
+          - protocol-v1#endpoint-urls
+          - connector-api#validation
+          - connector-api#options.rendezvous
+          - connector-api#errors.invalid_endpoint
+      endpoint.taken-literally:
+        title: An endpoint is never percent-decoded
+        expectation: >-
+          An endpoint whose path or pipe name holds `%2F` and `%7Buser%7D` attaches to a fake
+          listening at the literal, undecoded name.
+        kind: connector
+        backends: [fake]
+        transports: [unix, npipe]
+        covers:
+          - protocol-v1#endpoint-urls
+      endpoint.template-expansion:
+        title: Templates expand from the client's own context
+        expectation: >-
+          With an endpoint holding `{user}` and `{pid}`, in a 0700 directory the runner made from
+          the adapter's reported PID: the wrapper's `PIPEAPI_ENDPOINT` equals the runner's own
+          expansion (the effective UID on POSIX, the name `GetUserNameW` gives on Windows, and the
+          adapter's PID), and the connector reaches the expanded address.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        transports: [unix, npipe]
+        covers:
+          - protocol-v1#templates
+          - protocol-v1#connect-sequence
+          - connector-api#connect
+      endpoint.session-template:
+        title: The session template expands on Windows
+        expectation: >-
+          With a pipe name holding `{session}`, the wrapper's `PIPEAPI_ENDPOINT` holds the session
+          ID `ProcessIdToSessionId` gives for the adapter's PID, and the connector reaches the
+          expanded address.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        transports: [npipe]
+        covers:
+          - protocol-v1#templates
+          - connector-api#connect
+      endpoint.generated-pipe:
+        title: A generated pipe name
+        expectation: >-
+          With no endpoint and `transport` `npipe`, and with `transport` unset: the wrapper's
+          `PIPEAPI_ENDPOINT` is `npipe:////./pipe/pipeapi-<name>-<uuid>` with `name` set and
+          `npipe:////./pipe/pipeapi-<uuid>` without, the UUID random (version 4) and lowercase, and
+          different across two connects.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        transports: [npipe]
+        covers:
+          - protocol-v1#generated-endpoints
+          - protocol-v1#constants.generated_name_prefix
+          - connector-api#options.name
+          - connector-api#options.transport
+          - connector-api#connect
+      endpoint.generated-socket:
+        title: A generated socket's directory
+        expectation: >-
+          With no endpoint, `transport` `unix` or unset: `PIPEAPI_ENDPOINT` is
+          `unix://<dir>/s.sock`, where `<dir>` is new, named `pipeapi-` and random characters, mode
+          0700, in `$XDG_RUNTIME_DIR` when it is set and absolute, otherwise in the system temporary
+          directory (a relative `$XDG_RUNTIME_DIR` is ignored), and in `/tmp` when the socket's path
+          would exceed 103 bytes (`$XDG_RUNTIME_DIR` set to a deep path).
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        transports: [unix]
+        covers:
+          - protocol-v1#generated-endpoints
+          - protocol-v1#constants.socket_file
+          - protocol-v1#constants.generated_name_prefix
+          - protocol-v1#transport-access
+      endpoint.generated-loopback:
+        title: A generated loopback endpoint and its rendezvous directory
+        expectation: >-
+          With no endpoint and `transport` `tcp`: `PIPEAPI_ENDPOINT` is `tcp://127.0.0.1:0`, and
+          `PIPEAPI_RENDEZVOUS` is `<dir>/rendezvous.json` in a new directory named `pipeapi-` and
+          random characters, mode 0700 on POSIX, and on Windows with an access list that grants only
+          the user, SYSTEM and Administrators.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        transports: [tcp]
+        covers:
+          - protocol-v1#generated-endpoints
+          - protocol-v1#rendezvous-file
+          - protocol-v1#transport-access
+          - protocol-v1#constants.rendezvous_file
+          - protocol-v1#environment_variables.PIPEAPI_RENDEZVOUS
+      endpoint.ipv6-loopback:
+        title: An IPv6 loopback endpoint
+        expectation: >-
+          Given `tcp://[::1]:<port>` where a backend runs, the connector attaches and its requests
+          reach the app. Applies where the host has an IPv6 loopback address.
+        kind: connector
+        transports: [tcp]
+        covers:
+          - protocol-v1#endpoint-urls
+  transport:
+    title: Transports
+    description: Transport access, unsupported transports and busy pipes.
+    cases:
+      transport.unix-on-windows:
+        title: "`unix://` is an unsupported transport on Windows"
+        expectation: >-
+          `connect()` with a valid `unix://` endpoint fails `unsupported_transport` with `transport`
+          `unix` and `endpoint` the text given; with no endpoint and the `transport` option `unix`,
+          it fails `unsupported_transport` with `transport` `unix` and a null `endpoint`. Neither
+          spawns. The adapter's own start, which loads the connector, succeeded.
+        kind: connector
+        backends: []
+        needs: [spawn-wrapper]
+        platforms: [windows]
+        once: true
+        covers:
+          - protocol-v1#endpoint-urls
+          - connector-api#transports-and-proxies
+          - connector-api#validation
+          - connector-api#errors.unsupported_transport
+          - connector-api#options.transport
+      transport.npipe-on-posix:
+        title: "`npipe://` is an unsupported transport on POSIX"
+        expectation: >-
+          As `transport.unix-on-windows`, for a valid `npipe://` endpoint and the `transport` option
+          `npipe`: each fails `unsupported_transport` with `transport` `npipe`.
+        kind: connector
+        backends: []
+        needs: [spawn-wrapper]
+        platforms: [posix]
+        once: true
+        covers:
+          - protocol-v1#endpoint-urls
+          - connector-api#transports-and-proxies
+          - connector-api#validation
+          - connector-api#errors.unsupported_transport
+          - connector-api#options.transport
+      transport.loopback-binds-its-address:
+        title: A loopback server binds only its endpoint's address
+        expectation: >-
+          A server on `tcp://127.0.0.1:<p>` refuses connections at `[::1]:<p>` and at each
+          non-loopback address of the host; one on `tcp://[::1]:<p>` refuses `127.0.0.1:<p>`.
+        kind: server
+        transports: [tcp]
+        covers:
+          - protocol-v1#transport-access
+          - protocol-v1#threats
+      transport.loopback-exclusive-bind:
+        title: A loopback port is bound exclusively on Windows
+        expectation: >-
+          While a server holds a fixed port, the runner's bind of the same port with `SO_REUSEADDR`
+          fails.
+        kind: server
+        transports: [tcp]
+        platforms: [windows]
+        covers:
+          - protocol-v1#spawn-race
+      transport.pipe-refuses-remote:
+        title: A pipe refuses remote clients
+        expectation: >-
+          Opening the pipe through `\\<computer name>\pipe\<name>`, over SMB, fails, while the local
+          path succeeds.
+        kind: server
+        transports: [npipe]
+        covers:
+          - protocol-v1#transport-access
+          - protocol-v1#threats
+      transport.pipe-refuses-other-user:
+        title: A pipe admits only its user
+        expectation: >-
+          Opening the pipe as a second local account fails with access denied. Needs that account on
+          the CI runner.
+        kind: server
+        transports: [npipe]
+        covers:
+          - protocol-v1#transport-access
+          - protocol-v1#threats
+      transport.pipe-identification-level:
+        title: A client opens a pipe at identification level
+        expectation: >-
+          `ImpersonateNamedPipeClient` by the fake on each connection the connector opens yields
+          `SecurityIdentification` at most.
+        kind: connector
+        backends: [fake]
+        transports: [npipe]
+        relies_on: [pipe_identification]
+        covers:
+          - protocol-v1#transport-access
+          - protocol-v1#limits
+      transport.busy-pipe-waits:
+        title: A busy pipe is waited for
+        expectation: >-
+          With the server's pipe pool small, the runner holds every free instance with raw
+          connections once the lease is open. A request through the untyped request, one through the
+          primitive and a `dial()`, issued together, each log `pipe_busy` (`attempt` 1 or more);
+          once the runner has seen three records with `attempt` 1, one for each, it closes three raw
+          connections, one for each waiter, and each succeeds.
+        kind: connector
+        transports: [npipe]
+        covers:
+          - connector-api#opening-connections
+          - connector-api#log_events.pipe_busy
+          - connector-api#capabilities
+          - connector-api#dial
+      transport.busy-pipe-timeout:
+        title: A busy pipe is waited for only until the connect timeout
+        expectation: >-
+          With every instance held, a request with `connectTimeout` 1 fails `backend_unavailable` no
+          sooner than 1 s after its first attempt, and within 15 s, well before libuv's 30 s wait
+          (loose).
+        kind: connector
+        transports: [npipe]
+        covers:
+          - connector-api#opening-connections
+          - connector-api#options.connectTimeout
+          - connector-api#errors.backend_unavailable
+      transport.socket-directory-checked:
+        title: A server refuses a socket in a directory others can access
+        expectation: >-
+          A server whose socket path sits in a directory its group or other users can access (mode
+          0750, and `/tmp` with its mode 1777) exits 78, with no `startup` record and nothing bound
+          at the path; with the socket in a directory of mode 0700 that its user owns, it serves.
+        kind: server
+        transports: [unix]
+        covers:
+          - protocol-v1#transport-access
+          - protocol-v1#exit-codes
+          - protocol-v1#exit_codes.startup_failure
+  rendezvous:
+    title: Rendezvous file
+    description: The rendezvous file of a generated loopback port.
+    cases:
+      rendezvous.written-once-bound:
+        title: The server writes the port once it has bound
+        expectation: >-
+          With port 0 and `PIPEAPI_RENDEZVOUS` set: the file appears and validates against
+          `rendezvous.schema.json`; a connection to its port, made as soon as the file is first
+          read, is accepted, and its hello verifies. Every read of the path, from before the server
+          starts, parses whole (a weak check of the atomic write).
+        kind: server
+        transports: [tcp]
+        covers:
+          - protocol-v1#rendezvous-file
+          - protocol-v1#environment_variables.PIPEAPI_RENDEZVOUS
+      rendezvous.server-removes:
+        title: The server removes the file, then an empty directory
+        expectation: >-
+          As the server stops, it removes the file, then its directory. With a file of the runner's
+          beside it, it removes only the rendezvous file.
+        kind: server
+        transports: [tcp]
+        covers:
+          - protocol-v1#generated-files
+          - protocol-v1#stopping
+          - protocol-v1#rendezvous-file
+      rendezvous.unknown-property:
+        title: A client ignores an unknown property
+        expectation: >-
+          A rendezvous file holding `port` and an unknown property attaches to the fake at that
+          port.
+        kind: connector
+        backends: [fake]
+        transports: [tcp]
+        covers:
+          - protocol-v1#rendezvous-file
+          - protocol-v1#compatible-changes
+      rendezvous.waits-for-file:
+        title: A client waits for the file
+        expectation: >-
+          Given a port-0 endpoint whose rendezvous file doesn't exist yet, `connect()` neither fails
+          nor spawns; the runner writes the file once the adapter acknowledges the call, and
+          `connect()` attaches.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        transports: [tcp]
+        covers:
+          - protocol-v1#rendezvous-file
+          - protocol-v1#connect-sequence
+          - connector-api#connect
+      rendezvous.reread-before-hello:
+        title: A client reads the file again before each hello
+        expectation: >-
+          The file names fake A, whose hello carries a wrong proof, as a stale port another server
+          took. Once A records a hello, the runner replaces the file atomically to name fake B, and
+          `connect()` succeeds against B without `verification_failed`. Again with A not listening
+          at all.
+        kind: connector
+        backends: [fake]
+        transports: [tcp]
+        covers:
+          - protocol-v1#rendezvous-file
+          - protocol-v1#connect-sequence
+          - connector-api#connect
+          - connector-api#addresses
+      rendezvous.respawn-clears-stale:
+        title: A respawn clears the stale file first
+        expectation: >-
+          On a respawn with a generated port, the rendezvous file is absent when the wrapper records
+          the restart's spawn, and the connector reaches the new port.
+        kind: connector
+        needs: [spawn-wrapper]
+        transports: [tcp]
+        covers:
+          - connector-api#restarts
+          - connector-api#addresses
+  environment:
+    title: Environment variables
+    description: The protocol's variables, as the server reads them and a connector passes them.
+    cases:
+      environment.server-removes-variables:
+        title: The app never sees the protocol's variables
+        expectation: >-
+          The app's `/environment` reports every protocol variable unset, and names no variable
+          whose value contains the token.
+        kind: server
+        covers:
+          - protocol-v1#environment-variables
+          - protocol-v1#threats
+          - protocol-v1#identity
+      environment.server-refuses-malformed:
+        title: A server exits 78 on a malformed environment
+        expectation: >-
+          Started with each of: an invalid endpoint (each invalid form, ports 80 and 443, `unix://`
+          on Windows); an empty token; a port-0 endpoint without `PIPEAPI_RENDEZVOUS`; a grace of
+          `abc`, `-1`, `1.5`, `060`, `+60` or ` 60`; a lease TTL of `29` or `abc`. The server exits
+          78, with no `startup` record, and nothing is bound at the endpoint.
+        kind: server
+        covers:
+          - protocol-v1#environment-variables
+          - protocol-v1#endpoint-urls
+          - protocol-v1#ports-80-and-443
+          - protocol-v1#exit-codes
+          - protocol-v1#exit_codes.startup_failure
+          - protocol-v1#lease-ttl
+          - protocol-v1#durations.lease_ttl_minimum
+          - protocol-v1#encodings
+          - protocol-v1#environment_variables.PIPEAPI_ENDPOINT
+          - protocol-v1#environment_variables.PIPEAPI_TOKEN
+          - protocol-v1#environment_variables.PIPEAPI_RENDEZVOUS
+          - protocol-v1#environment_variables.PIPEAPI_STARTUP_GRACE
+          - protocol-v1#environment_variables.PIPEAPI_IDLE_GRACE
+          - protocol-v1#environment_variables.PIPEAPI_LEASE_TTL
+      environment.server-takes-endpoint-literally:
+        title: A server takes its endpoint as written
+        expectation: >-
+          A server whose endpoint's socket path or pipe name holds `{user}` binds that path or name
+          as written, braces included, and serves.
+        kind: server
+        transports: [unix, npipe]
+        covers:
+          - protocol-v1#templates
+          - protocol-v1#environment_variables.PIPEAPI_ENDPOINT
+      environment.server-ignores-unknown:
+        title: A server ignores a variable it doesn't know
+        expectation: "`PIPEAPI_FUTURE=1` doesn't keep the server from serving."
+        kind: server
+        once: true
+        covers:
+          - protocol-v1#compatible-changes
+      environment.spawned-receives:
+        title: A spawned backend receives the protocol's variables
+        expectation: >-
+          A spawned backend's environment holds `PIPEAPI_ENDPOINT` and `PIPEAPI_TOKEN`; holds
+          `PIPEAPI_RENDEZVOUS` exactly when the endpoint is loopback with a generated port (not for
+          a configured `tcp://127.0.0.1:<p>`); and holds each grace and TTL variable under its
+          unprefixed name, with its value, exactly when its option or its (prefixed) variable gives
+          one.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        covers:
+          - protocol-v1#environment-variables
+          - connector-api#what-a-spawned-backend-receives
+          - connector-api#options.startupGrace
+          - connector-api#options.idleGrace
+          - connector-api#options.leaseTtl
+          - protocol-v1#rendezvous-file
+      environment.spawned-scrubbed:
+        title: A spawned backend inherits no protocol-named variable
+        expectation: >-
+          With the client's environment holding `PIPEAPI_TOKEN`, `pipeapi_idle_grace`,
+          `WORKER_PIPEAPI_TOKEN`, `Other_Pipeapi_Lease_Ttl`, `PIPEAPI_FUTURE` and `KEEP=1`, and
+          `env` setting `ADDED=1` and `KEEP=2`: the spawned environment holds no name of the
+          protocol's form but those the connector sets, holds `ADDED=1` and `KEEP=2`, and otherwise
+          equals the client's.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        once: true
+        covers:
+          - connector-api#what-a-spawned-backend-receives
+          - connector-api#options.env
+      environment.spawned-command:
+        title: A spawned backend's command, arguments and directory
+        expectation: >-
+          The wrapper records `args` in order and `cwd`; with `cwd` unset, the adapter's own.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        once: true
+        covers:
+          - connector-api#options.command
+          - connector-api#options.args
+          - connector-api#options.cwd
+  options:
+    title: Options
+    description: "The connector's options: validation and where their values come from."
+    cases:
+      options.invalid:
+        title: Invalid options fail before any spawn or connection
+        expectation: >-
+          Each of these, in options that are otherwise valid, with a `command` in all but the third:
+          an endpoint without a token; an empty token; no endpoint and no `command`; `idleGrace`
+          `never` with a generated endpoint; `leaseTtl` 29; `env` holding `PIPEAPI_TOKEN` or
+          `x_pipeapi_y`; `respawnLimit` 0; `connectTimeout` 0; `envPrefix` `worker`; `name` `-x` or
+          65 characters long; a `rendezvous` with no endpoint, with `tcp://127.0.0.1:<p>` for a port
+          other than 0, or with a `unix://` endpoint. Each fails `invalid_option` naming the option
+          (`command` for the third, `rendezvous` for the last), with no spawn and no connection.
+        kind: connector
+        backends: []
+        needs: [spawn-wrapper]
+        once: true
+        covers:
+          - connector-api#validation
+          - connector-api#errors.invalid_option
+          - protocol-v1#tokens
+          - protocol-v1#durations.lease_ttl_minimum
+          - connector-api#options.token
+          - connector-api#options.idleGrace
+          - connector-api#options.leaseTtl
+          - connector-api#options.env
+          - connector-api#options.respawnLimit
+          - connector-api#options.connectTimeout
+          - connector-api#options.envPrefix
+          - connector-api#options.name
+      options.environment-precedence:
+        title: An option, then its variable, then its default
+        expectation: >-
+          With fake A at the option's endpoint and fake B at `PIPEAPI_ENDPOINT`'s: the option wins
+          (A gets the hello, B nothing); with the option unset, the variable is used (B); a variable
+          set to the empty string counts as unset, so with no command `connect()` fails
+          `invalid_option` naming `command`, as with neither set, and neither fake gets a hello. The
+          token follows the same order.
+        kind: connector
+        backends: [fake]
+        once: true
+        covers:
+          - connector-api#environment
+          - connector-api#options.endpoint
+          - connector-api#options.token
+      options.env-prefix:
+        title: A prefix replaces the protocol's names
+        expectation: >-
+          With `envPrefix` `WORKER`, the connector reads `WORKER_PIPEAPI_ENDPOINT`,
+          `WORKER_PIPEAPI_TOKEN` and `WORKER_PIPEAPI_RENDEZVOUS`, and attaches there; a fake at the
+          unprefixed `PIPEAPI_ENDPOINT` records no connection.
+        kind: connector
+        backends: [fake]
+        once: true
+        covers:
+          - connector-api#environment
+          - connector-api#options.envPrefix
+          - connector-api#options.rendezvous
+      options.environment-malformed:
+        title: A malformed variable fails as its option would
+        expectation: >-
+          `PIPEAPI_IDLE_GRACE=abc`, and `060`, fail `invalid_option` for `idleGrace`, with a message
+          naming the variable (the prefixed name under a prefix);
+          `PIPEAPI_ENDPOINT=tcp://localhost:1` fails `invalid_endpoint`.
+        kind: connector
+        backends: []
+        needs: [spawn-wrapper]
+        once: true
+        covers:
+          - connector-api#environment
+          - connector-api#errors.invalid_option
+          - connector-api#errors.invalid_endpoint
+      options.graces-only-when-spawned:
+        title: Grace and TTL options apply only to a spawned backend
+        expectation: >-
+          Attached with `idleGrace` 0 to a backend the runner started with
+          `PIPEAPI_IDLE_GRACE=never`: after `close()`, once the app has recorded the lease's
+          `client_disconnected`, the backend still answers a hello.
+        kind: connector
+        once: true
+        covers:
+          - connector-api#what-a-spawned-backend-receives
+          - connector-api#options.idleGrace
+  token:
+    title: Tokens
+    description: The token's form and where it never goes.
+    cases:
+      token.generated-form:
+        title: A generated token is b64u(32)
+        expectation: >-
+          With a generated endpoint, the spawned `PIPEAPI_TOKEN` matches the `b64u_32` pattern (43
+          characters, canonical), and two connects generate different tokens.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        covers:
+          - protocol-v1#tokens
+          - protocol-v1#encodings
+          - protocol-v1#generated-endpoints
+      token.never-on-wire:
+        title: The token never crosses the wire
+        expectation: >-
+          No byte the connector writes to the fake, through connect, three requests, a renewal and
+          `close()`, holds the token or its base64 form.
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#tokens
+          - protocol-v1#proofs
+          - connector-api#dial
+  host:
+    title: Host and proxies
+    description: The Host and `Origin` headers, and proxies.
+    cases:
+      host.reserved-requests-carry-host:
+        title: Hellos, leases and renewals carry the fixed Host
+        expectation: >-
+          The fake records `Host: pipeapi.localhost` on every hello, lease request and renewal, on
+          every transport.
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#host-and-proxies
+          - protocol-v1#constants.host
+      host.no-origin:
+        title: A client never sends `Origin`
+        expectation: >-
+          No request the connector sends carries `Origin`: none of the fake's records, and no app
+          request `/seen` reports.
+        kind: connector
+        backends: [app, fake]
+        covers:
+          - protocol-v1#host-and-proxies
+      host.invalid-host:
+        title: A loopback server refuses any other Host
+        expectation: >-
+          A hello, a lease request and an app request with Host `pipeapi.localhost:<port>`,
+          `localhost`, `127.0.0.1` or `[::1]` are rejected with `invalid_host`, and one with Host
+          `PIPEAPI.LOCALHOST` passes the check, since hosts compare without regard to case.
+        kind: server
+        transports: [tcp]
+        covers:
+          - protocol-v1#host-and-proxies
+          - protocol-v1#rejections.invalid_host
+          - protocol-v1#constants.host
+          - protocol-v1#ports-80-and-443
+      host.origin-forbidden:
+        title: A loopback server refuses any `Origin`
+        expectation: >-
+          Each reserved route, and an app route, with a valid Host and session and an `Origin` of
+          `null`, `http://pipeapi.localhost` or `http://example.com`, is rejected with
+          `origin_forbidden`.
+        kind: server
+        transports: [tcp]
+        covers:
+          - protocol-v1#host-and-proxies
+          - protocol-v1#rejections.origin_forbidden
+      host.proxies-ignored:
+        title: Requests never go through a proxy
+        expectation: >-
+          With `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and their lowercase forms naming a runner
+          listener, and `NO_PROXY` unset: every request through the untyped request and the
+          primitive reaches the app, and the listener records no connection.
+        kind: connector
+        vias: [untyped, primitive]
+        baseline: true
+        covers:
+          - protocol-v1#host-and-proxies
+          - connector-api#transports-and-proxies
+          - protocol-v1#threats
+      host.system-proxy-ignored:
+        title: Requests never go through the system proxy
+        expectation: >-
+          With a per-user system proxy and a PAC URL naming a runner listener, restored on every
+          path: every request through the untyped request and the primitive reaches the app, and
+          the listener records no connection.
+        kind: connector
+        vias: [untyped, primitive]
+        platforms: [windows]
+        needs: [system-proxy]
+        covers:
+          - protocol-v1#host-and-proxies
+          - connector-api#transports-and-proxies
+  routes:
+    title: Reserved routes
+    description: The routes under the reserved prefix.
+    cases:
+      routes.unknown-route:
+        title: An unknown reserved route or method is refused
+        expectation: >-
+          GET `/__pipeapi/` and `/__pipeapi/nothing`, POST `/__pipeapi/ready`, GET
+          `/__pipeapi/renew` and `/__pipeapi/shutdown`, and DELETE `/__pipeapi/lease`, with and
+          without a session, are rejected with `unknown_route`.
+        kind: server
+        covers:
+          - protocol-v1#reserved-routes
+          - protocol-v1#rejections.unknown_route
+          - protocol-v1#constants.reserved_prefix
+      routes.prefix-matching:
+        title: Reserved routes match the decoded path
+        expectation: >-
+          The server matches a path after percent-decoding it, without resolving dot segments. A
+          hello sent to `/%5F%5Fpipeapi/ready` is answered as a hello, and GET
+          `/%5F%5Fpipeapi/nothing` is rejected with `unknown_route`. With a session, GET
+          `/__pipeapi` (without its final slash) and GET `/x/../__pipeapi/ready` reach the app,
+          whose log records each with that path.
+        kind: server
+        covers:
+          - protocol-v1#reserved-routes
+          - protocol-v1#constants.reserved_prefix
+          - protocol-v1#rejections.unknown_route
+      routes.hello:
+        title: The hello
+        expectation: >-
+          A hello with a fresh nonce and no other pipeapi header answers 200 with a `hello` body:
+          `protocols` holds 1; `features` is empty, since v1 registers none; `pid` is the server's
+          (the `startup` record's); `proof` verifies with the token over the nonce and `pid`;
+          `challenge` is b64u(32). Two hellos give different challenges.
+        kind: server
+        covers:
+          - protocol-v1#routes.hello
+          - protocol-v1#hello-proof
+          - protocol-v1#discovery-and-negotiation
+          - protocol-v1#headers.X-PipeAPI-Nonce
+          - protocol-v1#enrollment
+          - protocol-v1#features
+          - protocol-v1#protocol_versions.1
+          - protocol-v1#constants.hello_label
+          - protocol-v1#encodings
+      routes.hello-pid-is-peer:
+        title: The hello's PID is the connection's peer
+        expectation: >-
+          The hello's `pid` equals the peer PID the OS reports for the connection (`SO_PEERCRED`,
+          `LOCAL_PEERPID`, `GetNamedPipeServerProcessId`).
+        kind: server
+        transports: [unix, npipe]
+        covers:
+          - protocol-v1#hello-proof
+          - protocol-v1#connect-sequence
+      routes.hello-after-lifespan:
+        title: No hello is answered before the lifespan startup
+        expectation: >-
+          With the app's lifespan startup held, a hello sent then gets no response; after the runner
+          releases the startup, the response (to it or a retry) arrives only once the `startup`
+          record is in the log.
+        kind: server
+        needs: [reference-app-control]
+        covers:
+          - protocol-v1#connect-sequence
+          - protocol-v1#spawn-race
+      routes.renew:
+        title: The renew route
+        expectation: >-
+          POST `/__pipeapi/renew` with a session answers 204; without one it is rejected with
+          `invalid_session`.
+        kind: server
+        covers:
+          - protocol-v1#routes.renew
+          - protocol-v1#lease-ttl
+      routes.shutdown:
+        title: The shutdown route
+        expectation: >-
+          POST `/__pipeapi/shutdown` with any open lease's session answers 202, then the server
+          stops; without a session it is rejected with `invalid_session`.
+        kind: server
+        covers:
+          - protocol-v1#routes.shutdown
+          - protocol-v1#stopping
+  hello:
+    title: Hello and verification
+    description: A client's hello, its checks of the server, and negotiation.
+    cases:
+      hello.nonce-checked:
+        title: A hello needs a well-formed nonce
+        expectation: >-
+          A hello without `X-PipeAPI-Nonce`, or with a nonce of 42 or 44 characters, with padding,
+          with `+` or `/`, or whose last character has unused bits set, is rejected with
+          `invalid_nonce`; the header named in lowercase works.
+        kind: server
+        covers:
+          - protocol-v1#rejections.invalid_nonce
+          - protocol-v1#encodings
+          - protocol-v1#headers.X-PipeAPI-Nonce
+      hello.token-as-given:
+        title: The proofs key HMAC with the token exactly as given
+        expectation: >-
+          A server whose token is `  pässwörd=  ` (spaces, non-ASCII, `=`) answers hellos whose
+          proof matches the runner's HMAC keyed by the token's exact UTF-8 bytes, and enrolls the
+          runner's enrollment computed the same way.
+        kind: server
+        once: true
+        covers:
+          - protocol-v1#proofs
+          - protocol-v1#hello-proof
+          - protocol-v1#enrollment-proof
+      hello.fresh-nonce:
+        title: Each hello carries a fresh nonce
+        expectation: >-
+          Every hello the connector sends, retries included, carries a b64u(32) nonce it hasn't sent
+          before (the fake answers the first two with `draining`).
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#connect-sequence
+          - protocol-v1#headers.X-PipeAPI-Nonce
+      hello.wrong-proof:
+        title: A wrong proof stops the client before it enrolls
+        expectation: >-
+          A hello whose proof was computed with each mistake the invalid hello-proof vectors name (a
+          decoded or trimmed token, another label, another nonce, another PID) fails `connect()`
+          with `verification_failed` and logs `verification_failed`; the fake records no lease
+          request.
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#connect-sequence
+          - protocol-v1#hello-proof
+          - protocol-v1#test-vectors
+          - protocol-v1#threats
+          - connector-api#connect
+          - connector-api#errors.verification_failed
+          - connector-api#log_events.verification_failed
+      hello.malformed:
+        title: A malformed hello stops the client
+        expectation: >-
+          A hello answered 200 with a body that isn't JSON, lacks `proof`, holds a proof that isn't
+          b64u(32), or a `pid` out of range, fails `verification_failed`; no lease request.
+        kind: connector
+        backends: [fake]
+        covers:
+          - connector-api#errors.verification_failed
+      hello.pid-mismatch:
+        title: A proof for another PID stops the client
+        expectation: >-
+          A hello whose correct proof covers a PID other than the fake's own fails
+          `verification_failed`, and no lease request follows.
+        kind: connector
+        backends: [fake]
+        transports: [unix, npipe]
+        relies_on: [peer_pid]
+        covers:
+          - protocol-v1#connect-sequence
+          - protocol-v1#hello-proof
+          - protocol-v1#limits
+          - connector-api#connect
+          - connector-api#transports-and-proxies
+      hello.rejected:
+        title: A rejected hello stops the client, unless it is draining
+        expectation: >-
+          A hello rejected with `invalid_host`, `origin_forbidden`, `invalid_nonce`, `unknown_route`
+          or an unknown code fails `verification_failed`; no lease request.
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#connect-sequence
+          - connector-api#connect
+          - protocol-v1#compatible-changes
+      hello.not-pipeapi:
+        title: An HTTP server that isn't pipeapi fails verification
+        expectation: >-
+          A hello answered 404 or 500 without `X-PipeAPI-Rejected`, as an HTTP server that isn't
+          pipeapi answers, fails `connect()` with `verification_failed`, and no lease request
+          follows.
+        kind: connector
+        backends: [fake]
+        covers:
+          - connector-api#errors.verification_failed
+          - protocol-v1#connect-sequence
+          - connector-api#connect
+      hello.negotiates-highest:
+        title: The client picks the highest common version
+        expectation: >-
+          With the hello's `protocols` `[7, 1, 2]`, the connector picks 1: `hello_verified` logs
+          `protocol` 1 and the fake's PID as `serverPid`, and the lease request and every later
+          request carry `X-PipeAPI-Protocol: 1`.
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#discovery-and-negotiation
+          - protocol-v1#connect-sequence
+          - protocol-v1#headers.X-PipeAPI-Protocol
+          - connector-api#log_events.hello_verified
+      hello.no-common-protocol:
+        title: No common version fails naming both sides
+        expectation: >-
+          With `protocols` `[2]`, and again with `[2]` and a null `proof`, which the client reads
+          only by a version it shares, `connect()` fails `no_common_protocol` with
+          `clientProtocols` `[1]` and `serverProtocols` `[2]`, and no lease request.
+        kind: connector
+        backends: [fake]
+        once: true
+        covers:
+          - protocol-v1#discovery-and-negotiation
+          - connector-api#errors.no_common_protocol
+      hello.client-ignores-unknown:
+        title: A client ignores what it doesn't know
+        expectation: >-
+          A hello with an unknown property, an unknown feature flag and an unknown response header,
+          and a lease stream with unknown properties and an unknown event type between heartbeats:
+          the connector connects and holds its lease, with no event or error before the
+          `reconnecting` that follows when the fake then ends the lease with `restart`.
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#compatible-changes
+          - protocol-v1#lease-stream
+          - protocol-v1#features
+      hello.server-ignores-unknown:
+        title: A server ignores a header it doesn't know
+        expectation: >-
+          An unknown `X-PipeAPI-Future` header on a hello, a lease request and an app request
+          changes nothing.
+        kind: server
+        once: true
+        covers:
+          - protocol-v1#compatible-changes
+      hello.poll-schedule:
+        title: Hellos back off from the initial wait to the maximum
+        expectation: >-
+          While the fake answers `draining`, the gaps between hellos are at least
+          `hello_poll_initial`, and none exceeds `hello_poll_maximum` by more than 1 s, a wide upper
+          bound.
+        kind: connector
+        backends: [fake]
+        once: true
+        covers:
+          - connector-api#connect
+          - connector-api#constants.hello_poll_initial
+          - connector-api#constants.hello_poll_maximum
+  enrollment:
+    title: Enrollment
+    description: The lease request's enrollment, from both sides.
+    cases:
+      enrollment.opens-lease:
+        title: An enrollment opens a lease
+        expectation: >-
+          A lease request with `X-PipeAPI-Protocol: 1` and the enrollment for a fresh challenge
+          answers 200 `application/jsonl`, whose first line is a `session` event with a `client_id`
+          of its pattern, a b64u(32) `secret` and a null `lease_ttl`.
+        kind: server
+        covers:
+          - protocol-v1#routes.lease
+          - protocol-v1#enrollment
+          - protocol-v1#enrollment-proof
+          - protocol-v1#lease-event-types
+          - protocol-v1#lease_event_types.session
+          - protocol-v1#headers.X-PipeAPI-Enrollment
+          - protocol-v1#headers.X-PipeAPI-Protocol
+          - protocol-v1#constants.enrollment_label
+      enrollment.failures:
+        title: A bad enrollment is refused
+        expectation: >-
+          A lease request whose enrollment is missing, malformed, names a challenge the server
+          didn't issue, or carries a proof with each mistake the invalid enrollment-proof vectors
+          name, is rejected with `enrollment_failed`; no session event, and the client list is
+          unchanged.
+        kind: server
+        covers:
+          - protocol-v1#enrollment
+          - protocol-v1#rejections.enrollment_failed
+          - protocol-v1#test-vectors
+          - protocol-v1#threats
+      enrollment.single-use:
+        title: A challenge is used up by its first lease request
+        expectation: >-
+          A challenge that enrolled can't enroll again, and one named with a wrong proof can't then
+          enroll with the right one: each is `enrollment_failed`.
+        kind: server
+        covers:
+          - protocol-v1#enrollment
+          - protocol-v1#threats
+      enrollment.earlier-rejection-keeps-challenge:
+        title: A lease request refused before its enrollment is checked keeps its challenge
+        expectation: >-
+          After a lease request without `X-PipeAPI-Protocol` is rejected with
+          `unsupported_protocol`, and on loopback one with Host `localhost` is rejected with
+          `invalid_host`, a lease request with the same challenge and its proof enrolls.
+        kind: server
+        covers:
+          - protocol-v1#enrollment
+          - protocol-v1#rejections
+      enrollment.challenge-lifetime:
+        title: A challenge expires
+        expectation: >-
+          A challenge used no sooner than `challenge_lifetime` after its hello is
+          `enrollment_failed`; one used at once enrolls.
+        kind: server
+        once: true
+        slow: true
+        covers:
+          - protocol-v1#enrollment
+          - protocol-v1#durations.challenge_lifetime
+      enrollment.protocol-first:
+        title: The protocol version is checked before the enrollment
+        expectation: >-
+          A lease request without `X-PipeAPI-Protocol`, or with `2`, is rejected with
+          `unsupported_protocol`, even with a bad enrollment.
+        kind: server
+        covers:
+          - protocol-v1#rejections
+          - protocol-v1#rejections.unsupported_protocol
+          - protocol-v1#discovery-and-negotiation
+      enrollment.client-retries-once:
+        title: A client enrolls again once, after a fresh hello
+        expectation: >-
+          A lease rejected once with `enrollment_failed` sends the connector back for a fresh hello
+          (a new nonce) and a second enrollment, which succeeds. Rejected twice in a row,
+          `connect()` fails `protocol_error`.
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#connect-sequence
+          - protocol-v1#enrollment
+          - connector-api#connect
+          - connector-api#errors.protocol_error
+      enrollment.client-unsupported-protocol:
+        title: A lease refused for its version stops the client
+        expectation: >-
+          A lease rejected with `unsupported_protocol` fails `connect()` with `protocol_error`,
+          after one lease request.
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#connect-sequence
+          - connector-api#connect
+          - connector-api#errors.protocol_error
+      enrollment.client-draining:
+        title: A draining lease request sends the client back to the hello
+        expectation: >-
+          A lease rejected with `draining` sends the connector back to the hello; once the fake
+          stops draining, having recorded that hello, `connect()` succeeds.
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#connect-sequence
+          - protocol-v1#draining
+          - connector-api#connect
+      enrollment.client-malformed-stream:
+        title: A malformed lease stream is a protocol error
+        expectation: >-
+          A lease whose first line isn't JSON, or isn't a valid `session` event, fails `connect()`
+          with `protocol_error`.
+        kind: connector
+        backends: [fake]
+        covers:
+          - connector-api#errors.protocol_error
+  session:
+    title: Sessions
+    description: The session header on every request after enrollment.
+    cases:
+      session.required:
+        title: Every other request needs an open lease's session
+        expectation: >-
+          An app request, a renewal and a shutdown request without `X-PipeAPI-Session`, or with a
+          malformed one, an unknown client ID or a wrong secret, are rejected with
+          `invalid_session`; hellos and lease requests need none.
+        kind: server
+        covers:
+          - protocol-v1#sessions
+          - protocol-v1#rejections.invalid_session
+          - protocol-v1#headers.X-PipeAPI-Session
+      session.bound-to-secret:
+        title: No client can use another's ID
+        expectation: Client B's ID with client A's secret is rejected with `invalid_session`.
+        kind: server
+        covers:
+          - protocol-v1#sessions
+          - protocol-v1#threats
+      session.ends-with-lease:
+        title: A session ends with its lease
+        expectation: >-
+          Once a client has closed its lease and the app has recorded its `client_disconnected`, its
+          session is rejected with `invalid_session`.
+        kind: server
+        covers:
+          - protocol-v1#sessions
+          - protocol-v1#lease-loss
+          - protocol-v1#leases
+      session.headers-stripped:
+        title: The app never sees pipeapi's credentials
+        expectation: >-
+          An app request carrying its session and an `X-PipeAPI-Enrollment` header reaches `/seen`
+          without either, and with `X-PipeAPI-Protocol`.
+        kind: server
+        covers:
+          - protocol-v1#headers
+          - protocol-v1#identity
+      session.rejected-header-removed:
+        title: The app can't send the rejection marker
+        expectation: An app response that sets `X-PipeAPI-Rejected` reaches the client without it.
+        kind: server
+        needs: [reference-app-control]
+        covers:
+          - protocol-v1#headers
+          - protocol-v1#headers.X-PipeAPI-Rejected
+      session.ids-unique:
+        title: Client IDs are never reused
+        expectation: Fifty leases, opened and closed in turn, get fifty different client IDs.
+        kind: server
+        once: true
+        covers:
+          - protocol-v1#sessions
+          - protocol-v1#identity
+          - protocol-v1#lease-loss
+      session.any-connection:
+        title: A session isn't tied to a connection
+        expectation: A session works on connections other than its lease's, on several at once.
+        kind: server
+        covers:
+          - protocol-v1#identity
+      session.protocol-first:
+        title: The protocol version is checked before the session
+        expectation: >-
+          An app request without `X-PipeAPI-Protocol`, with or without a valid session, is rejected
+          with `unsupported_protocol`.
+        kind: server
+        covers:
+          - protocol-v1#rejections
+          - protocol-v1#rejections.unsupported_protocol
+  rejection:
+    title: Rejections
+    description: pipeapi's refusals and how a client tells them from the app's responses.
+    cases:
+      rejection.each-code:
+        title: Every rejection carries its status and marker
+        expectation: >-
+          For each code in the registry's rejections, a request that provokes it gets the code's
+          status, `X-PipeAPI-Rejected` with the code, and on a 401 `WWW-Authenticate: PipeAPI
+          error="<code>"`; the app never sees it. A code the registry gains without a provocation
+          here fails the case. `draining` needs the stop held (server hook); the Host and Origin
+          codes run on loopback.
+        kind: server
+        needs: [server-test-hooks]
+        covers:
+          - protocol-v1#rejections
+          - protocol-v1#headers.X-PipeAPI-Rejected
+          - protocol-v1#headers.WWW-Authenticate
+          - protocol-v1#constants.auth_scheme
+          - protocol-v1#errors
+          - protocol-v1#rejections.invalid_host
+          - protocol-v1#rejections.origin_forbidden
+          - protocol-v1#rejections.invalid_nonce
+          - protocol-v1#rejections.unsupported_protocol
+          - protocol-v1#rejections.enrollment_failed
+          - protocol-v1#rejections.invalid_session
+          - protocol-v1#rejections.draining
+          - protocol-v1#rejections.unknown_route
+      rejection.order:
+        title: The first failing check decides the rejection
+        expectation: >-
+          Bad Host and an `Origin`: `invalid_host`. An `Origin` on an unknown route:
+          `origin_forbidden`. An unknown route without a session: `unknown_route`. A malformed nonce
+          while stopping: `invalid_nonce`. A hello while stopping: `draining`. An app request
+          without protocol or session: `unsupported_protocol`. A bad enrollment while stopping:
+          `enrollment_failed`. A good enrollment while stopping: `draining`.
+        kind: server
+        needs: [server-test-hooks]
+        transports: [tcp]
+        covers:
+          - protocol-v1#rejections
+      rejection.app-401:
+        title: The app's own 401 is the app's
+        expectation: >-
+          GET `/status/401` returns the app's 401 as a response, with its `WWW-Authenticate: Bearer`
+          and no `X-PipeAPI-Rejected`. By the time a second request, sent once that response has
+          returned, has answered, the app has recorded the first once, so it wasn't sent again, and
+          no lifecycle event has followed.
+        kind: connector
+        baseline: true
+        covers:
+          - protocol-v1#rejections
+          - connector-api#rejected-requests
+          - connector-api#requests
+      rejection.unknown-code:
+        title: A rejection with an unknown code is returned as it is
+        expectation: >-
+          An app request the fake rejects with an unknown code is returned to the app as that
+          response. By the time a second request, sent once that response has returned, has
+          answered, the fake has recorded the first once, and no lifecycle event has followed.
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#compatible-changes
+          - connector-api#rejected-requests
+  connect:
+    title: Connect
+    description: Attaching, spawning, readiness and `connect()`'s failures.
+    cases:
+      connect.attaches:
+        title: A client attaches to a running backend
+        expectation: >-
+          With a backend at the given endpoint, `connect()` with a command attaches: no spawn, an
+          `attached` record with the expanded endpoint, and its requests reach that backend
+          (`/seen`'s `pid`).
+        kind: connector
+        needs: [spawn-wrapper]
+        covers:
+          - protocol-v1#connect-sequence
+          - connector-api#connect
+          - connector-api#log_events.attached
+      connect.spawns:
+        title: A client spawns when nothing answers
+        expectation: >-
+          With nothing at the given endpoint, `connect()` spawns once and logs `spawned` with the
+          process's PID, the command without its arguments and the expanded endpoint, then
+          `lease_opened` with a null `leaseTtl`.
+        kind: connector
+        needs: [spawn-wrapper]
+        covers:
+          - protocol-v1#connect-sequence
+          - connector-api#connect
+          - connector-api#log_events.spawned
+          - connector-api#log_events.lease_opened
+      connect.no-command:
+        title: Without a command, nothing at the endpoint fails at once
+        expectation: >-
+          With nothing at the given endpoint and no command, `connect()` fails `backend_unavailable`
+          after its one attempt: with `connectTimeout` 30, the error arrives within 15 s (loose).
+        kind: connector
+        backends: []
+        covers:
+          - connector-api#connect
+          - connector-api#errors.backend_unavailable
+          - protocol-v1#connect-sequence
+          - connector-api#options.command
+          - connector-api#opening-connections
+      connect.port-zero-attaches-only:
+        title: A given port-0 endpoint is only attached to
+        expectation: >-
+          Given another client's port-0 endpoint, token and rendezvous path, and a command,
+          `connect()` attaches to that backend and never spawns, even while the rendezvous file is
+          missing; when no file appears, it fails `connect_timeout`, still without spawning.
+        kind: connector
+        needs: [spawn-wrapper]
+        transports: [tcp]
+        covers:
+          - protocol-v1#connect-sequence
+          - protocol-v1#sharing-a-backend
+          - protocol-v1#rendezvous-file
+          - connector-api#connect
+      connect.readiness:
+        title: A backend is ready when `connect()` returns
+        expectation: >-
+          When `connect()` returns, the log holds the `startup` record, and the first request
+          succeeds at once: one request record, no `request_retried`.
+        kind: connector
+        covers:
+          - protocol-v1#connect-sequence
+          - connector-api#connect
+      connect.fake-ready-ignored:
+        title: Text on stdout is never readiness
+        expectation: >-
+          With `REFERENCE_APP_FAKE_READY` set and the lifespan startup held after the line is
+          written: `connect()` hasn't returned once the runner sees the line in the backend's
+          output, and returns only after the runner releases the startup.
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - protocol-v1#stdio
+          - protocol-v1#connect-sequence
+      connect.startup-failure:
+        title: A failed start carries the exit and the stderr tail
+        expectation: >-
+          With `REFERENCE_APP_FAIL_STARTUP` set to a message, `connect()` fails `startup_failed`
+          with `exitCode` 78, a null `signal` and a `stderrTail` holding the message. A command that
+          exits 1 at once fails `startup_failed` with `exitCode` 1.
+        kind: connector
+        covers:
+          - connector-api#connect
+          - connector-api#errors.startup_failed
+          - connector-api#the-stderr-tail
+          - protocol-v1#exit_codes.startup_failure
+      connect.spawn-failed:
+        title: A command the OS can't start
+        expectation: A command that doesn't exist fails `spawn_failed` naming the command.
+        kind: connector
+        backends: []
+        once: true
+        covers:
+          - connector-api#errors.spawn_failed
+      connect.deadline:
+        title: The connect timeout bounds the whole sequence
+        expectation: >-
+          Against a fake that accepts hellos and never answers them, `connect()` with
+          `connectTimeout` 1 fails `connect_timeout`, no sooner than 1 s after the call.
+        kind: connector
+        backends: [fake]
+        covers:
+          - connector-api#connect
+          - connector-api#errors.connect_timeout
+          - connector-api#options.connectTimeout
+          - protocol-v1#connect-sequence
+      connect.cancelled:
+        title: Cancelling `connect()`
+        expectation: >-
+          Cancelling `connect()` through the language's signal while it waits for a hello fails it
+          with the language's cancellation error (the adapter reports a cancellation, not a pipeapi
+          code), emits no lifecycle event, and stops the backend it spawned on an endpoint it
+          generated.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        once: true
+        covers:
+          - connector-api#connect
+          - connector-api#errors
+      connect.cleanup-on-failure:
+        title: A failed `connect()` cleans up what it generated
+        expectation: >-
+          With `connectTimeout` 2, on a generated endpoint whose backend never gets ready (its
+          lifespan startup held), `connect()` fails `connect_timeout` within 15 s (loose), and by
+          the time it returns the error, the spawned process has exited without the runner's help
+          and the generated directory (unix, loopback) is gone.
+        kind: connector
+        needs: [spawn-wrapper, reference-app-control]
+        covers:
+          - connector-api#connect
+          - protocol-v1#generated-files
+      connect.lost-race-attaches:
+        title: A spawn that lost the race attaches to the winner
+        expectation: >-
+          The wrapper holds the connector's spawn; the runner starts server A on the endpoint, then
+          releases the spawn. The spawned server exits 75 with no `startup` record, and `connect()`
+          succeeds against A (`hello_verified`'s `serverPid` is A's).
+        kind: connector
+        needs: [spawn-wrapper]
+        covers:
+          - protocol-v1#connect-sequence
+          - protocol-v1#spawn-race
+          - protocol-v1#exit_codes.already_running
+          - connector-api#connect
+      connect.spawned-drained:
+        title: A spawned backend that drains and exits
+        expectation: >-
+          When the backend the connector spawned answers `draining` and exits, the connector goes on
+          as one that spawned nothing: with nothing accepting, it spawns again within its deadline,
+          and connects.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        covers:
+          - protocol-v1#connect-sequence
+          - protocol-v1#draining
+          - connector-api#connect
+      connect.back-to-attach:
+        title: Nothing accepting sends an attached client back to attach or spawn
+        expectation: >-
+          An attached client whose hello finds nothing accepting (the fake closes its listener after
+          the first connection) goes back to attach or spawn: with a command it spawns, and
+          connects.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        covers:
+          - protocol-v1#connect-sequence
+          - connector-api#connect
+      connect.token-as-given:
+        title: A token of any form connects
+        expectation: A connector given the token `  pässwörd=  ` connects.
+        kind: connector
+        once: true
+        covers:
+          - protocol-v1#proofs
+      connect.client-died-before-enrolling:
+        title: A backend whose client never enrolled stops
+        expectation: >-
+          When the adapter is killed as soon as the wrapper records its spawn on a given endpoint,
+          the backend stops after its startup grace (`startupGrace` 1): a `shutdown` record no
+          sooner than 1 s after `startup`, and exit status 0.
+        kind: connector
+        needs: [spawn-wrapper]
+        covers:
+          - protocol-v1#graces
+          - connector-api#connect
+          - connector-api#options.startupGrace
+  request:
+    title: Requests
+    description: >-
+      Requests through the untyped request and the primitive, each case that lists `vias` running
+      once for each, as it does for each transport.
+    cases:
+      request.query-string:
+        title: Path and query arrive intact
+        expectation: >-
+          GET `/seen/a%2Fb/c?x=1&x=2&y=%20z` arrives with that raw path and query, byte for byte.
+        kind: connector
+        vias: [untyped, primitive]
+        baseline: true
+        covers:
+          - connector-api#requests
+      request.whole-body:
+        title: A whole body goes out with its length
+        expectation: >-
+          POST `/seen` with a JSON body, and POST `/items/form` URL-encoded and multipart with
+          repeated `tags`, go out with `content-length` and no `transfer-encoding`, and arrive
+          whole.
+        kind: connector
+        vias: [untyped, primitive]
+        baseline: true
+        covers:
+          - connector-api#requests
+      request.streamed-body:
+        title: A streamed body goes out chunked
+        expectation: >-
+          POST `/echo` with a body the runner feeds in chunks goes out chunked and arrives intact.
+        kind: connector
+        vias: [untyped, primitive]
+        baseline: true
+        covers:
+          - connector-api#requests
+      request.multi-value-headers:
+        title: Repeated response headers are kept
+        expectation: GET `/headers` returns both `Set-Cookie` values, in order.
+        kind: connector
+        vias: [untyped, primitive]
+        baseline: true
+        covers:
+          - connector-api#requests
+      request.no-body:
+        title: A response without a body completes
+        expectation: >-
+          DELETE `/items/{id}` (204) and GET `/status/204`, `/status/205` and `/status/304` complete
+          with an empty body.
+        kind: connector
+        vias: [untyped, primitive]
+        baseline: true
+        covers:
+          - connector-api#requests
+      request.head:
+        title: HEAD completes without a body
+        expectation: HEAD `/items` returns GET's headers with no body, and completes.
+        kind: connector
+        vias: [untyped, primitive]
+        baseline: true
+        covers:
+          - connector-api#requests
+      request.concurrent:
+        title: Requests run concurrently
+        expectation: "Four GET `/barrier/<name>?parties=4` sent at once all answer `filled: true`."
+        kind: connector
+        vias: [untyped, primitive]
+        baseline: true
+        covers:
+          - protocol-v1#identity
+      request.status-is-not-error:
+        title: An HTTP status is never a connector error
+        expectation: GET `/status/404` and POST `/status/500` are returned as responses.
+        kind: connector
+        vias: [untyped, primitive]
+        baseline: true
+        covers:
+          - connector-api#requests
+          - protocol-v1#errors
+      request.host-header:
+        title: App requests carry the fixed Host
+        expectation: "`/seen` shows `host: pipeapi.localhost`, exactly, and no `origin`."
+        kind: connector
+        vias: [untyped, primitive]
+        baseline: true
+        covers:
+          - protocol-v1#host-and-proxies
+          - protocol-v1#constants.host
+          - connector-api#requests
+      request.protocol-header:
+        title: App requests carry the protocol version and session
+        expectation: >-
+          `/seen` shows `x-pipeapi-protocol: 1` on every request, which passed the session check.
+        kind: connector
+        vias: [untyped, primitive]
+        covers:
+          - connector-api#requests
+          - protocol-v1#headers.X-PipeAPI-Protocol
+          - protocol-v1#headers.X-PipeAPI-Session
+          - protocol-v1#sessions
+      request.authorization-passes:
+        title: "`Authorization` reaches the app"
+        expectation: >-
+          A request with `Authorization: Bearer <canary>` reaches `/seen` with it unchanged.
+        kind: connector
+        vias: [untyped, primitive]
+        baseline: true
+        covers:
+          - protocol-v1#headers
+      request.scope-client:
+        title: The app's connection fields
+        expectation: >-
+          `/seen` reports `client` as `["127.0.0.1", 0]` and `server` as `["pipeapi.localhost",
+          null]`, and its `pipeapi` extension names the transport, the client ID and, where the OS
+          reports one, the peer PID. These fields follow #6's design, which no page states yet.
+        kind: server
+      request.typed-client:
+        title: A generated client needs no setup
+        expectation: >-
+          The adapter's client generated from the reference app's schema, built on the primitive
+          with nothing but its base URL, creates and lists items.
+        kind: connector
+        relies_on: [typed_client]
+        covers:
+          - connector-api#requests
+          - connector-api#capabilities
+      request.validation-error:
+        title: "`ValidationError` structures a 422"
+        expectation: >-
+          POST `/items` with a body FastAPI refuses gives a 422, which `ValidationError` turns into
+          `validation_error` whose `detail` matches the body's `loc`, `msg` and `type`; a 200, and
+          the 422 `/status/422` gives, are left as they are.
+        kind: connector
+        vias: [untyped, primitive]
+        once: true
+        covers:
+          - connector-api#validationerror
+          - connector-api#errors.validation_error
+          - connector-api#capabilities
+  dial:
+    title: "`dial()`"
+    description: Raw connections.
+    cases:
+      dial.hand-written:
+        title: A hand-written request over `dial()`
+        expectation: >-
+          Over `dial()`, a hand-written HTTP/1.1 GET `/seen` with the Host, protocol and session
+          values the `Backend` exposes answers 200, and `/seen` shows only the headers written;
+          without the session it is rejected with `invalid_session`.
+        kind: connector
+        covers:
+          - connector-api#dial
+          - connector-api#capabilities
+          - protocol-v1#sessions
+      dial.old-session:
+        title: A dialed connection gets no outage handling
+        expectation: >-
+          After the server drops the lease and the connector emits `reconnected`, a request on a
+          dialed connection with the old values is rejected with `invalid_session`; one with the
+          values the `Backend` now exposes works, and by the time it answers, the first hasn't been
+          sent again.
+        kind: connector
+        needs: [server-test-hooks]
+        covers:
+          - connector-api#dial
+          - connector-api#lease-loss-and-outages
+  sse:
+    title: Server-sent events
+    description: The SSE helper, apart from outages.
+    cases:
+      sse.first-event-before-end:
+        title: Events arrive while the stream is open
+        expectation: >-
+          The SSE helper over GET `/events?count=3` yields events 1 to 3, each with type `message`,
+          data `event <i>` and ID `<i>`, while the stream is open (no `disconnect` record yet).
+        kind: connector
+        baseline: true
+        covers:
+          - connector-api#sse-helper
+          - connector-api#capabilities
+      sse.abort:
+        title: Aborting a stream
+        expectation: >-
+          Aborting the request after event 1 ends the iteration with the language's abort error, and
+          the app records a `disconnect` with `last_event_id` 1.
+        kind: connector
+        baseline: true
+        covers:
+          - connector-api#capabilities
+      sse.server-ends:
+        title: A stream the server ends ends the iteration
+        expectation: >-
+          GET `/events?count=2&end=true` ends the iteration after event 2, without an error.
+        kind: connector
+        baseline: true
+        covers:
+          - connector-api#server-sent-events
+      sse.client-killed:
+        title: A dead client's connection closes
+        expectation: >-
+          Killing the adapter hard while it holds `/events` open makes the app record its
+          `disconnect`.
+        kind: connector
+        baseline: true
+        covers:
+          - protocol-v1#leases
+      sse.parsing:
+        title: Events parse as the HTML standard says
+        expectation: >-
+          A stream with multi-line `data`, a custom `event`, comments and CRLF line endings yields
+          the events the HTML standard's parser gives.
+        kind: connector
+        needs: [reference-app-control]
+        once: true
+        covers:
+          - connector-api#sse-helper
+  websocket:
+    title: WebSockets
+    description: >-
+      The two round trips the connector API asks of every connector, the server's refusal of a
+      handshake without credentials, and what an outage does to a socket.
+    cases:
+      websocket.echo:
+        title: An echo round trip
+        expectation: >-
+          Through the connector's documented path, a text and a binary message to `/ws` echo back;
+          the app records a `websocket` request; closing with code 4000 records a `disconnect` with
+          `code` 4000 and `echoed` 2.
+        kind: connector
+        baseline: true
+        covers:
+          - connector-api#websockets
+      websocket.no-credentials:
+        title: A handshake without credentials is refused
+        expectation: >-
+          A WebSocket handshake to `/ws` without a session is rejected with `invalid_session` and
+          its marker where the server supports the denial-response extension, and otherwise with a
+          plain 403 without a code; the app never sees it.
+        kind: server
+        covers:
+          - protocol-v1#rejections
+          - connector-api#websockets
+      websocket.server-close:
+        title: A close from the server reaches the client
+        expectation: >-
+          `/ws?close_after=2&close_code=4001` closes after two echoes, and the client sees code 4001
+          and the reason `closed by the server`.
+        kind: connector
+        baseline: true
+        covers:
+          - connector-api#websockets
+      websocket.not-reopened:
+        title: A WebSocket is never reopened
+        expectation: >-
+          When the runner kills the backend and starts another on the endpoint, an open WebSocket
+          ends with the close or error its library reports, and no second WebSocket request has
+          reached the new backend by the time a request issued once the connector has emitted
+          `reconnected` has.
+        kind: connector
+        covers:
+          - connector-api#websockets
+          - connector-api#server-sent-events
+  lease:
+    title: Leases
+    description: The lease stream, heartbeats, the TTL and how a connector holds its lease.
+    cases:
+      lease.stream-format:
+        title: The lease stream's format
+        expectation: >-
+          The lease stream is `application/jsonl`: each line one UTF-8 JSON object ending in LF
+          without CR. The `session` event arrives first, while the stream is open.
+        kind: server
+        covers:
+          - protocol-v1#lease-stream
+          - protocol-v1#lease-event-types
+          - protocol-v1#lease_event_types.session
+      lease.heartbeats:
+        title: Heartbeats
+        expectation: >-
+          Heartbeats arrive while the lease is open: the first within twice `heartbeat_interval` of
+          enrollment, and each later one at least `heartbeat_interval` less 1 s after the one
+          before.
+        kind: server
+        once: true
+        slow: true
+        covers:
+          - protocol-v1#lease-event-types
+          - protocol-v1#lease_event_types.heartbeat
+          - protocol-v1#durations.heartbeat_interval
+          - protocol-v1#heartbeats
+      lease.end-is-last:
+        title: The end event is the last
+        expectation: >-
+          When the server ends a lease (shutdown, revocation, expiry), the `end` event with its
+          reason is the stream's last line, and the stream then closes.
+        kind: server
+        covers:
+          - protocol-v1#lease-event-types
+          - protocol-v1#lease_event_types.end
+          - protocol-v1#lease-end-reasons
+      lease.release-by-closing:
+        title: Closing a lease ends only that client's use
+        expectation: >-
+          Closing one of two leases' connections ends only that lease: the app records its
+          `client_disconnected`, then an app request with the other lease's session answers. When
+          the runner then sends a shutdown request with that session, the other lease's first line
+          after its session event, heartbeats aside, is `end` with `shutdown`.
+        kind: server
+        covers:
+          - protocol-v1#leases
+          - protocol-v1#identity
+      lease.ttl-expires:
+        title: A lease without renewal expires
+        expectation: >-
+          With `PIPEAPI_LEASE_TTL=30`, the session event's `lease_ttl` is 30; a lease with no
+          request after enrollment gets `end` with `expired` no sooner than 30 s later, and its
+          session is then rejected with `invalid_session`.
+        kind: server
+        once: true
+        slow: true
+        covers:
+          - protocol-v1#lease-ttl
+          - protocol-v1#lease_end_reasons.expired
+          - protocol-v1#environment_variables.PIPEAPI_LEASE_TTL
+          - protocol-v1#durations.lease_ttl_minimum
+      lease.ttl-renewed:
+        title: Requests renew a lease
+        expectation: >-
+          With `PIPEAPI_LEASE_TTL=30`, a lease renewed every 10 s, through `/renew` and,
+          separately, through app requests, is still open once each of two leases never renewed has
+          ended with `expired`: the first enrolled after it, and the second once the first had
+          ended.
+        kind: server
+        once: true
+        slow: true
+        covers:
+          - protocol-v1#lease-ttl
+          - protocol-v1#routes.renew
+      lease.ttl-none:
+        title: Leases have no TTL unless one is set
+        expectation: >-
+          With `PIPEAPI_LEASE_TTL` unset, and set to `never`, the session event's `lease_ttl` is
+          null.
+        kind: server
+        once: true
+        covers:
+          - protocol-v1#lease-ttl
+      lease.client-renews:
+        title: A connector renews its lease
+        expectation: >-
+          With `leaseTtl` 30 on a backend it spawned on an endpoint the runner gave, and no app
+          requests, the connector's lease is still open, with no `reconnecting`, once each of two
+          leases the runner holds there without renewing has ended with `expired`: the first
+          enrolled after the connector's lease opened, and the second once the first had ended.
+          Against the fake, idle renewals come no more than a third of the TTL plus 2 s apart
+          (loose).
+        kind: connector
+        backends: [app, fake]
+        once: true
+        slow: true
+        covers:
+          - connector-api#holding-the-lease
+          - protocol-v1#lease-ttl
+          - connector-api#options.leaseTtl
+          - protocol-v1#routes.renew
+      lease.renewal-failure:
+        title: A failed renewal is logged, not a loss
+        expectation: >-
+          When the fake fails a renewal (a 503, and separately a dropped connection), the connector
+          logs `renewal_failed`, emits no `reconnecting`, and renews again at the next interval.
+        kind: connector
+        backends: [fake]
+        once: true
+        slow: true
+        covers:
+          - connector-api#holding-the-lease
+          - connector-api#log_events.renewal_failed
+      lease.no-read-timeout:
+        title: No read timeout on the lease
+        expectation: >-
+          After the session event the fake sends nothing for 110 s, past every listed HTTP library's
+          default read timeout: no `reconnecting` follows, and when the fake then ends the lease
+          with `restart`, `reconnecting` follows.
+        kind: connector
+        backends: [fake]
+        once: true
+        slow: true
+        covers:
+          - protocol-v1#heartbeats
+          - connector-api#holding-the-lease
+      lease.lost-only-at-stream-end:
+        title: Only the stream's end loses a lease
+        expectation: >-
+          Heartbeats that stop, a failed renewal and an app request rejected with `invalid_session`
+          (with `safeRetry` false) emit no `reconnecting`; the stream's end does.
+        kind: connector
+        backends: [fake]
+        covers:
+          - connector-api#holding-the-lease
+          - protocol-v1#heartbeats
+          - protocol-v1#lease-loss
+      lease.idle-connections-closed:
+        title: A lost lease's idle connections are closed
+        expectation: >-
+          When the fake ends the lease, the connector closes its idle keep-alive connections, and
+          its next request arrives on a new connection.
+        kind: connector
+        backends: [fake]
+        covers:
+          - connector-api#holding-the-lease
+      lease.one-lease:
+        title: One lease per client
+        expectation: >-
+          A connector opens exactly one lease for each connect and each reconnect, and no other by
+          the time `close()` returns.
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#leases
+  lifetime:
+    title: Lifetime
+    description: Graces, stopping, draining, exit codes and generated files.
+    cases:
+      lifetime.startup-grace:
+        title: A backend no client enrolls with stops after its startup grace
+        expectation: >-
+          With `PIPEAPI_STARTUP_GRACE=1` and no lease, the `shutdown` record comes no sooner than 1
+          s after `startup`, and the server exits 0.
+        kind: server
+        covers:
+          - protocol-v1#graces
+          - protocol-v1#environment_variables.PIPEAPI_STARTUP_GRACE
+      lifetime.startup-grace-default:
+        title: The default startup grace
+        expectation: >-
+          With `PIPEAPI_STARTUP_GRACE` unset, the server stops no sooner than
+          `startup_grace_default` after `startup`, and exits 0.
+        kind: server
+        once: true
+        slow: true
+        covers:
+          - protocol-v1#graces
+          - protocol-v1#durations.startup_grace_default
+      lifetime.idle-grace:
+        title: A backend stops after its idle grace
+        expectation: >-
+          With `PIPEAPI_IDLE_GRACE=2`, the `shutdown` record comes no sooner than 2 s after the last
+          lease ended; unset, or 0, the server stops once the last lease ends. It exits 0.
+        kind: server
+        covers:
+          - protocol-v1#graces
+          - protocol-v1#environment_variables.PIPEAPI_IDLE_GRACE
+          - protocol-v1#durations.idle_grace_default
+      lifetime.grace-never:
+        title: A grace of `never` isn't 0
+        expectation: >-
+          A server with both graces `never` runs beside a control whose graces are both 1, and still
+          answers a hello once the control has logged its `shutdown`: after each served a lease
+          that then closed, the control's lease closing last, and again after each started with no
+          lease, the control starting last. It then stops on a signal.
+        kind: server
+        once: true
+        covers:
+          - protocol-v1#graces
+      lifetime.stop-order:
+        title: A stopping server's order
+        expectation: >-
+          With leases L and M open and a request R held in the app, a shutdown request from L
+          answers 202. L and M then get `end` with `shutdown`. While R is still held, the endpoint
+          is released (unix: the socket file gone and the lock free; loopback: the port refusing and
+          the rendezvous file gone; npipe: only R's instance left, so an open finds the pipe busy)
+          and no `shutdown` record exists. Once the runner releases R, R answers 200, the `shutdown`
+          record follows, and the server exits 0.
+        kind: server
+        needs: [reference-app-control]
+        covers:
+          - protocol-v1#stopping
+          - protocol-v1#lease_end_reasons.shutdown
+          - protocol-v1#exit-codes
+          - protocol-v1#routes.shutdown
+          - protocol-v1#generated-files
+      lifetime.signal-stop:
+        title: A signal stops the server in order
+        expectation: >-
+          SIGTERM on POSIX, and `CTRL_BREAK_EVENT` on Windows, stop the server in the same order,
+          with `end` `shutdown` on each lease, and it exits 0, not uvicorn's 3 or by the signal.
+        kind: server
+        covers:
+          - protocol-v1#stopping
+          - protocol-v1#exit-codes
+      lifetime.draining:
+        title: A stopping server drains
+        expectation: >-
+          With the stop held after it starts refusing (server hook), a hello and a lease request are
+          rejected with `draining`.
+        kind: server
+        needs: [server-test-hooks]
+        covers:
+          - protocol-v1#draining
+          - protocol-v1#rejections.draining
+          - protocol-v1#stopping
+      lifetime.client-draining:
+        title: A client waits out a draining server
+        expectation: >-
+          While the fake answers hellos and leases with `draining`, the connector keeps polling
+          without failing; when the fake then closes its listener, a connector with a command spawns
+          within its deadline; a spawned backend that exits 75 sends it back to the hello.
+        kind: connector
+        backends: [fake]
+        needs: [spawn-wrapper]
+        covers:
+          - protocol-v1#draining
+          - connector-api#connect
+          - protocol-v1#connect-sequence
+      lifetime.already-running:
+        title: A second server on a live endpoint exits 75
+        expectation: >-
+          A second server on a live endpoint exits 75 with no `startup` record of its PID, and the
+          first keeps answering hellos.
+        kind: server
+        covers:
+          - protocol-v1#spawn-race
+          - protocol-v1#exit_codes.already_running
+          - protocol-v1#exit-codes
+      lifetime.endpoint-before-lifespan:
+        title: The endpoint is taken before the lifespan runs
+        expectation: >-
+          While server A's lifespan startup is held, a second server on the endpoint exits 75.
+        kind: server
+        needs: [reference-app-control]
+        covers:
+          - protocol-v1#spawn-race
+      lifetime.pipe-first-instance:
+        title: A pipe name already taken
+        expectation: >-
+          With an instance of the pipe name the runner created first, the server exits 75.
+        kind: server
+        transports: [npipe]
+        covers:
+          - protocol-v1#spawn-race
+          - protocol-v1#exit_codes.already_running
+      lifetime.stale-socket:
+        title: A stale socket file doesn't stop the next server
+        expectation: >-
+          After a server is killed hard, leaving its socket and lock files, the next server on the
+          endpoint starts and serves; the lock file still exists.
+        kind: server
+        transports: [unix]
+        covers:
+          - protocol-v1#spawn-race
+          - protocol-v1#generated-files
+      lifetime.socket-files:
+        title: What a stopped server leaves
+        expectation: >-
+          After a clean stop, the socket file is gone, and the lock file (the socket's path with
+          `.lock`) and the socket's directory remain.
+        kind: server
+        transports: [unix]
+        covers:
+          - protocol-v1#generated-files
+          - protocol-v1#stopping
+          - protocol-v1#constants.lock_suffix
+          - protocol-v1#spawn-race
+      lifetime.startup-failure-exits:
+        title: A server that fails before serving exits 78
+        expectation: >-
+          A failed lifespan startup, an app that fails to import, and a bind that fails for another
+          reason (a socket path in a missing directory) each exit 78.
+        kind: server
+        covers:
+          - protocol-v1#exit-codes
+          - protocol-v1#exit_codes.startup_failure
+      lifetime.close-last-client:
+        title: "`close()` from the last client"
+        expectation: >-
+          With `idleGrace` 10 on a generated endpoint, `close()` returns while the backend still
+          runs; the backend exits 0 no sooner than 10 s later, with a `shutdown` record; the
+          connector, still running, then removes the generated directory (unix, loopback).
+        kind: connector
+        needs: [spawn-wrapper]
+        covers:
+          - connector-api#the-backend
+          - connector-api#capabilities
+          - protocol-v1#graces
+          - protocol-v1#generated-files
+          - connector-api#options.idleGrace
+      lifetime.last-client-killed:
+        title: The last client killed hard
+        expectation: >-
+          When the only client is killed hard, the backend exits 0 after its idle grace, with a
+          `shutdown` record, and the generated directory remains.
+        kind: connector
+        needs: [spawn-wrapper]
+        covers:
+          - protocol-v1#leases
+          - protocol-v1#graces
+          - protocol-v1#generated-files
+          - connector-api#the-backend
+      lifetime.client-shutdown:
+        title: "`shutdown()` stops the backend for every client"
+        expectation: >-
+          `shutdown()` gives a `shutdown` record and exit 0; the caller's `Backend`, and another
+          client's, each emit `lost` with reason `shutdown`; later requests and `dial()` fail
+          `backend_unavailable` at once.
+        kind: connector
+        covers:
+          - connector-api#the-backend
+          - connector-api#capabilities
+          - connector-api#lost
+          - connector-api#lost_reasons.shutdown
+          - connector-api#lease-loss
+          - protocol-v1#routes.shutdown
+          - protocol-v1#stopping
+          - connector-api#events.lost
+      lifetime.lost-before-exit:
+        title: "`lost` doesn't wait for the backend's exit"
+        expectation: >-
+          With the spawned backend's lifespan shutdown held, `shutdown()` makes the connector emit
+          `lost` with reason `shutdown` and a null `exitCode` and `signal` while the backend still
+          runs; once the runner releases the shutdown, the backend exits 0, and no further event has
+          followed by the time the connector logs `backend_exited` for it.
+        kind: connector
+        needs: [reference-app-control]
+        once: true
+        covers:
+          - connector-api#lease-loss
+          - connector-api#events.lost
+          - connector-api#lost
+      lifetime.given-client-keeps-files:
+        title: A client given another's generated endpoint removes nothing
+        expectation: >-
+          A client given another's generated endpoint, token and rendezvous path removes nothing as
+          it closes; the generating client removes its directory once the backend has exited.
+        kind: connector
+        transports: [tcp]
+        covers:
+          - protocol-v1#generated-files
+  topology:
+    title: Topology
+    description: Several clients and several backends.
+    cases:
+      topology.spawn-race:
+        title: Two clients spawn at once
+        expectation: >-
+          Two adapters with the same configured endpoint, token and command connect at once, the
+          wrapper holding both spawns until both are recorded: one server takes the endpoint (one
+          `startup` record), the other exits 75, and both connect, with the same `serverPid` and
+          different client IDs.
+        kind: connector
+        needs: [spawn-wrapper]
+        covers:
+          - protocol-v1#spawn-race
+          - protocol-v1#sharing-a-backend
+          - protocol-v1#exit_codes.already_running
+          - connector-api#connect
+      topology.two-clients-identity:
+        title: Two clients, two identities
+        expectation: >-
+          Two adapters sharing an endpoint and token get different client IDs, and the client-ID
+          route reports each request's sender's own `clientId`.
+        kind: connector
+        covers:
+          - protocol-v1#identity
+          - protocol-v1#sessions
+          - connector-api#the-backend
+          - connector-api#capabilities
+      topology.concurrent-clients:
+        title: Two clients' requests run together
+        expectation: >-
+          Two clients' requests to `/barrier/<name>?parties=2`, one each, both answer `filled:
+          true`.
+        kind: connector
+        baseline: true
+        covers:
+          - protocol-v1#sharing-a-backend
+          - protocol-v1#identity
+      topology.first-client-closes:
+        title: The backend outlives its first client
+        expectation: >-
+          When the spawning client closes while a second holds a lease, the second's requests still
+          succeed; after the second closes, the backend exits after its idle grace.
+        kind: connector
+        covers:
+          - protocol-v1#sharing-a-backend
+          - protocol-v1#leases
+      topology.spawner-exits:
+        title: Output after the spawning client exits
+        expectation: >-
+          When the spawning client, with stdout and stderr to `log`, is killed hard while a second
+          client holds a lease, the second's `POST /output` to stdout and stderr succeeds, and so do
+          its later requests. The backend's output keeps being drained, as #6's stdio guard designs
+          it.
+        kind: connector
+        covers:
+          - protocol-v1#sharing-a-backend
+          - connector-api#the-backend
+      topology.two-backends:
+        title: Backends are independent
+        expectation: >-
+          One adapter connects two `Backend`s with different names: requests reach each one's own
+          backend (different `/seen` `pid`s), each log record carries the `name` of the `Backend` it
+          concerns, by which the case tells the two apart, and killing one backend hard leaves the
+          other untouched: by the time the killed one's `Backend` has emitted `lost`, the other has
+          emitted no event, and its requests still succeed.
+        kind: connector
+        covers:
+          - connector-api#the-backend
+          - connector-api#logging
+  identity:
+    title: Identity
+    description: What the app learns and can do about clients.
+    cases:
+      identity.revoke:
+        title: Revoking a client
+        expectation: >-
+          When the app revokes client A, A's lease ends with `end` `revoked`, A emits `lost` with
+          reason `revoked`, and A's old session is rejected with `invalid_session`. A never enrolls
+          again and B is unaffected: the clients route, which B reads once A has emitted `lost`,
+          lists only B, and B has emitted no event by then.
+        kind: connector
+        covers:
+          - protocol-v1#sessions
+          - protocol-v1#identity
+          - protocol-v1#lease-loss
+          - protocol-v1#lease_end_reasons.revoked
+          - connector-api#lost_reasons.revoked
+          - connector-api#lease-loss
+      identity.client-killed:
+        title: A client killed hard leaves the client list
+        expectation: >-
+          Killing client A hard makes the app record `client_disconnected` with A's ID, and the
+          clients route then lists only B.
+        kind: connector
+        covers:
+          - protocol-v1#leases
+          - protocol-v1#identity
+  outage:
+    title: Outages
+    description: >-
+      Reconnecting, waiting, retrying and resuming. The runner replaces the backend itself (kills A,
+      starts B on the same endpoint and token), so only the `reload` cases need a reload supervisor.
+    cases:
+      outage.lease-dropped:
+        title: A dropped lease reconnects
+        expectation: >-
+          When the server drops the lease while the backend runs, the connector emits `reconnecting`
+          with a null `endReason`, then `reconnected` with the old and new IDs; `clientId` is the
+          new one; both are logged at their levels; requests succeed.
+        kind: connector
+        needs: [server-test-hooks]
+        covers:
+          - connector-api#lease-loss
+          - connector-api#reconnecting
+          - connector-api#events.reconnecting
+          - connector-api#events.reconnected
+          - connector-api#log_events.reconnecting
+          - connector-api#log_events.reconnected
+          - protocol-v1#lease-loss
+          - connector-api#the-backend
+          - connector-api#capabilities
+      outage.end-reasons:
+        title: Each end reason's outcome
+        expectation: >-
+          When the fake ends the lease with `shutdown` or `revoked`, the connector emits `lost` with
+          that reason; with `restart`, `expired` or an unknown reason, it emits `reconnecting` with
+          that reason, then `reconnected` after a fresh hello and enrollment. A `Backend` that
+          emitted `lost` sends its fake no further hello by the time a second `Backend`, on a fake
+          that ends its lease with `restart` once the first's has ended, has emitted `reconnected`.
+        kind: connector
+        backends: [fake]
+        covers:
+          - protocol-v1#lease-loss
+          - protocol-v1#lease-end-reasons
+          - connector-api#lease-loss
+          - connector-api#lost_reasons.shutdown
+          - connector-api#lost_reasons.revoked
+          - protocol-v1#compatible-changes
+          - protocol-v1#lease_end_reasons.shutdown
+          - protocol-v1#lease_end_reasons.restart
+          - protocol-v1#lease_end_reasons.revoked
+          - protocol-v1#lease_end_reasons.expired
+      outage.backend-killed-attached:
+        title: An attached client loses a killed backend
+        expectation: >-
+          Killing the backend hard: the attached client emits `reconnecting` (null), then, with
+          nothing at the endpoint, `lost` with reason `unavailable` and error `connect_timeout`, no
+          sooner than `reconnectBudget` (2) after the lease ended. It never spawns, though it has a
+          command. Waiting and later requests, and `dial()`, then fail `backend_unavailable` at
+          once.
+        kind: connector
+        needs: [spawn-wrapper]
+        covers:
+          - connector-api#reconnecting
+          - connector-api#lost
+          - connector-api#lost_reasons.unavailable
+          - connector-api#errors.backend_unavailable
+          - connector-api#options.reconnectBudget
+          - connector-api#events.lost
+          - connector-api#log_events.lost
+          - connector-api#errors.connect_timeout
+      outage.backend-killed-spawner:
+        title: A spawning client without respawn loses a killed backend
+        expectation: >-
+          With respawn off (its default), killing the backend the connector spawned emits
+          `reconnecting`, then `lost` with reason `exited`, the signal on POSIX or the exit status
+          on Windows, and the stderr tail; `backend_exited` is logged; no new spawn; the generated
+          directory is removed.
+        kind: connector
+        needs: [spawn-wrapper]
+        covers:
+          - connector-api#reconnecting
+          - connector-api#lost
+          - connector-api#lost_reasons.exited
+          - connector-api#log_events.backend_exited
+          - connector-api#the-stderr-tail
+          - connector-api#respawn
+          - connector-api#options.respawn
+      outage.budget-default:
+        title: The reconnect budget defaults to the connect timeout
+        expectation: >-
+          With `reconnectBudget` unset and `connectTimeout` 2, `lost` comes no sooner than 2 s after
+          the lease ended.
+        kind: connector
+        once: true
+        covers:
+          - connector-api#options.reconnectBudget
+      outage.new-backend:
+        title: A reconnect reaches the backend now at the endpoint
+        expectation: >-
+          After `reconnecting`, the runner starts backend B on the endpoint: the connector emits
+          `reconnected`, `hello_verified` names B's PID, its requests reach B, and it used the
+          endpoint and token it resolved at `connect()`.
+        kind: connector
+        covers:
+          - connector-api#reconnecting
+          - connector-api#addresses
+      outage.reconnect-draining:
+        title: Draining during a reconnect is no answer
+        expectation: >-
+          During a reconnect, hellos answered with `draining` count as no answer, and the connector
+          reconnects once the fake stops draining, within its budget.
+        kind: connector
+        backends: [fake]
+        covers:
+          - connector-api#reconnecting
+      outage.reconnect-verification:
+        title: A failed verification during a reconnect loses the backend
+        expectation: >-
+          During a reconnect, a hello with a wrong proof emits `lost` with reason `unavailable` and
+          error `verification_failed`.
+        kind: connector
+        backends: [fake]
+        covers:
+          - connector-api#reconnecting
+          - connector-api#lost_reasons.unavailable
+      outage.waiting-requests:
+        title: Requests wait for ready
+        expectation: >-
+          Requests issued after `reconnecting` wait; once B is ready they succeed with the new
+          lease, each reaching B once.
+        kind: connector
+        covers:
+          - connector-api#waiting-for-ready
+          - connector-api#capabilities
+      outage.wait-opt-out:
+        title: A request that opts out fails at once
+        expectation: >-
+          With `reconnectBudget` 60, a request with `waitForReady` false issued after `reconnecting`
+          fails `backend_unavailable` before any `lost` or `reconnected`.
+        kind: connector
+        covers:
+          - connector-api#waiting-for-ready
+          - connector-api#request_options.waitForReady
+      outage.wait-own-timeout:
+        title: A waiting request's own timeout
+        expectation: >-
+          A waiting request whose own timeout passes first fails with the language's timeout error.
+        kind: connector
+        once: true
+        covers:
+          - connector-api#waiting-for-ready
+      outage.close-while-reconnecting:
+        title: "`close()` ends a reconnect"
+        expectation: >-
+          `close()` after `reconnecting` makes waiting requests fail `closed`, and later calls fail
+          `closed`. No lifecycle event follows, even once B starts: none by the time a second
+          `Backend` on the same endpoint, left open, has emitted `reconnected` to B.
+        kind: connector
+        covers:
+          - connector-api#the-backend
+          - connector-api#waiting-for-ready
+          - connector-api#errors.closed
+          - connector-api#reconnecting
+      outage.retry-safe-methods:
+        title: Safe methods are sent again once
+        expectation: >-
+          GET, HEAD and OPTIONS requests held in A's app when A is killed are sent again once, to B,
+          with the new session: each reaches A once and B once, the adapter gets B's response, and
+          `request_retried` logs the method and the path without its query.
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - connector-api#safe-retry
+          - connector-api#log_events.request_retried
+          - connector-api#request_options.safeRetry
+      outage.retry-idempotency-key:
+        title: A keyed request is sent again once
+        expectation: >-
+          A POST with `Idempotency-Key` and a body the connector kept, held in A's app when A is
+          killed, is sent again once to B.
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - connector-api#safe-retry
+      outage.no-retry:
+        title: Requests that may have run aren't sent again
+        expectation: >-
+          POST, PUT and DELETE without `Idempotency-Key`, a GET with `safeRetry` false, and a POST
+          with a key but a streamed body, each held in A's app when A is killed, fail
+          `request_interrupted`, and B hasn't seen them by the time a request issued once the
+          connector has emitted `reconnected` has reached B.
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - connector-api#safe-retry
+          - connector-api#errors.request_interrupted
+          - connector-api#request_options.safeRetry
+      outage.no-retry-after-headers:
+        title: A response under way is never sent again
+        expectation: >-
+          A GET `/events` read through the untyped request, whose headers arrived, fails
+          `request_interrupted` when A dies mid-body, and isn't sent again: B hasn't seen it by the
+          time a request issued once the connector has emitted `reconnected` has reached B.
+        kind: connector
+        covers:
+          - connector-api#safe-retry
+      outage.retry-once:
+        title: A retried request is never retried twice
+        expectation: >-
+          A retried GET held in B's app when B is killed too fails `request_interrupted`, with no
+          third send: C, which the runner starts next, hasn't seen it by the time a request issued
+          once the connector has emitted `reconnected` to C has reached C.
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - connector-api#safe-retry
+      outage.lost-in-flight:
+        title: A written request finishes or fails on its own connection
+        expectation: >-
+          A request written before the `Backend` is lost fails `request_interrupted` when its
+          connection drops.
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - connector-api#lost
+          - connector-api#errors.request_interrupted
+      outage.rejected-resend:
+        title: A rejection a new lease cures is sent again
+        expectation: >-
+          An app request rejected with `invalid_session`, and separately `unsupported_protocol`, is
+          sent again once, after the connector holds a lease other than the one it carried (the fake
+          ends that lease after the rejection), with the new lease's credentials. With `safeRetry`
+          false, a streamed body, another code, or a budget that passes first, the rejection is
+          returned as the response.
+        kind: connector
+        backends: [fake]
+        covers:
+          - connector-api#rejected-requests
+      outage.connection-retry:
+        title: A Backend's connections retry until the connect timeout
+        expectation: >-
+          With the lease open, a request whose connection is refused (the fake's listener closed
+          once the adapter reports the request issued) is retried until the listener returns, and
+          succeeds; refused past `connectTimeout`, it fails `backend_unavailable` no sooner than
+          `connectTimeout` after its first attempt.
+        kind: connector
+        backends: [fake]
+        transports: [unix, tcp]
+        covers:
+          - connector-api#opening-connections
+          - connector-api#errors.backend_unavailable
+      outage.sse-resume:
+        title: An SSE stream resumes
+        expectation: >-
+          An SSE iteration of `/events` that dropped after event 3, when A was killed, resumes
+          against B with `Last-Event-ID: 3` no sooner than `sse_retry_default` after the drop, and
+          yields event 4 next.
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - connector-api#server-sent-events
+          - connector-api#constants.sse_retry_default
+          - connector-api#capabilities
+      outage.sse-retry-field:
+        title: An SSE stream's own reconnection time
+        expectation: "A stream that set `retry: 6000` resumes no sooner than 6 s after the drop."
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - connector-api#server-sent-events
+      outage.sse-no-resume:
+        title: Streams that can't resume fail
+        expectation: >-
+          A dropped stream whose events had no ID, or whose request had `safeRetry` false, fails the
+          iteration with `request_interrupted`, and isn't sent again: B hasn't seen it by the time a
+          stream with IDs that set `retry: 6000`, dropped by the same kill of A, has resumed against
+          B, since 6 s is longer than the `sse_retry_default` the others would wait.
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - connector-api#server-sent-events
+      outage.sse-single-attempt:
+        title: A resumed stream that drops at once fails
+        expectation: >-
+          A resumed stream that drops again before its first event fails the iteration with
+          `request_interrupted`.
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - connector-api#server-sent-events
+      outage.sse-lost:
+        title: A stream fails when the Backend is lost
+        expectation: >-
+          A dropped stream fails the iteration with `backend_unavailable` once the `Backend` is
+          lost.
+        kind: connector
+        covers:
+          - connector-api#server-sent-events
+  reload:
+    title: Reload
+    description: Restarts under `--reload`.
+    cases:
+      reload.requests-wait:
+        title: Requests during a reload wait and succeed
+        expectation: >-
+          During a `--reload` restart, the lease ends with `end` `restart`, the connector emits
+          `reconnecting` (`restart`) then `reconnected`, and requests issued meanwhile wait and
+          succeed.
+        kind: connector
+        needs: [reload-posix]
+        transports: [unix, tcp]
+        covers:
+          - protocol-v1#stopping
+          - protocol-v1#lease_end_reasons.restart
+          - connector-api#lease-loss
+      reload.requests-wait-on-pipes:
+        title: Requests during a reload on a named pipe wait and succeed
+        expectation: >-
+          As `reload.requests-wait`, on a named pipe: during a `--reload` restart, the lease ends
+          with `end` `restart`, the connector emits `reconnecting` (`restart`) then `reconnected`,
+          and requests issued meanwhile wait and succeed.
+        kind: connector
+        needs: [reload-npipe]
+        transports: [npipe]
+        covers:
+          - protocol-v1#stopping
+          - protocol-v1#lease_end_reasons.restart
+          - connector-api#lease-loss
+      reload.endpoint-stays-bound:
+        title: A reload refuses no connection
+        expectation: >-
+          Connections the raw client opens throughout a reload, from before the trigger until the
+          new worker's `startup` record, are all accepted, as #9 designs it.
+        kind: server
+        needs: [reload-posix]
+        transports: [unix, tcp]
+      reload.pipe-name-held:
+        title: A reload keeps the pipe name
+        expectation: >-
+          Connections the raw client opens throughout a reload, from before the trigger until the
+          new worker's `startup` record, succeed or find the pipe busy, and never find no pipe, as
+          #10 designs it.
+        kind: server
+        needs: [reload-npipe]
+        transports: [npipe]
+  respawn:
+    title: Respawn
+    description: Opt-in respawn by the client that spawned the backend.
+    cases:
+      respawn.after-unexpected-exit:
+        title: A backend that exits unexpectedly is respawned
+        expectation: >-
+          With respawn on, killing the spawned backend (and, separately, an exit with status 1
+          through the app's exit route) emits `reconnecting`, then `respawned` with the old and new
+          IDs. The wrapper records a second spawn with the same command, arguments, working
+          directory, environment, endpoint, token and rendezvous path, no sooner than
+          `respawnBackoff` after the exit; `respawned` and `backend_exited` are logged.
+        kind: connector
+        needs: [spawn-wrapper, reference-app-control]
+        covers:
+          - connector-api#respawn
+          - connector-api#when-a-connector-respawns
+          - connector-api#restarts
+          - connector-api#events-during-a-respawn
+          - connector-api#events.respawned
+          - connector-api#log_events.respawned
+          - connector-api#log_events.backend_exited
+          - connector-api#addresses
+          - connector-api#options.respawn
+          - connector-api#capabilities
+      respawn.typed-client-keeps-working:
+        title: The typed client works across a respawn
+        expectation: >-
+          With respawn on, the typed client the adapter built on the primitive before the spawned
+          backend was killed lists the respawned backend's items once `respawned` is emitted, with
+          nothing rebuilt.
+        kind: connector
+        needs: [spawn-wrapper]
+        relies_on: [typed_client]
+        covers:
+          - connector-api#addresses
+          - connector-api#requests-and-streams-during-a-respawn
+      respawn.not-after-normal-stop:
+        title: A normal stop is never respawned
+        expectation: >-
+          With respawn on, a shutdown request from another client emits `lost` with reason
+          `shutdown`, and an exit with status 0 without an end event emits `lost` with reason
+          `exited`. Neither respawns: the wrapper records no second spawn of that backend by the
+          time a second `Backend` with the same respawn options, on an endpoint of its own whose
+          backend the runner kills once the first's has exited, has emitted `respawned`.
+        kind: connector
+        needs: [spawn-wrapper, reference-app-control]
+        covers:
+          - connector-api#when-a-connector-respawns
+          - connector-api#lost_reasons.shutdown
+          - connector-api#lost_reasons.exited
+          - connector-api#lease-loss
+      respawn.limit:
+        title: Respawn stops at its limit
+        expectation: >-
+          With `respawnLimit` 2, once the first backend is killed hard, restarts that fail at
+          startup (the wrapper fails each spawn after the first with status 78) end, after the
+          second, in `lost` with reason `respawn_limit`, the last exit's status and its stderr tail:
+          three spawns in all.
+        kind: connector
+        needs: [spawn-wrapper]
+        once: true
+        covers:
+          - connector-api#restarts
+          - connector-api#lost_reasons.respawn_limit
+          - connector-api#options.respawnLimit
+          - connector-api#options.respawnWindow
+          - connector-api#events-during-a-respawn
+      respawn.backoff:
+        title: The waits before restarts
+        expectation: >-
+          With `respawnBackoff` 1 and `respawnBackoffMaximum` 4, the waits before restarts are at
+          least 1, 2 and 4 s. After a respawned backend has been ready for `respawnBackoffReset`
+          (1), the next wait is at least 1 s and under 3.5 s (loose).
+        kind: connector
+        needs: [spawn-wrapper]
+        once: true
+        covers:
+          - connector-api#restarts
+          - connector-api#options.respawnBackoff
+          - connector-api#options.respawnBackoffMaximum
+          - connector-api#options.respawnBackoffReset
+      respawn.failed-restarts-count:
+        title: A failed restart counts and is tried again
+        expectation: >-
+          A restart that fails `spawn_failed` (the command made missing), `startup_failed`, or
+          `connect_timeout` (the wrapper holding the process) counts as a restart and is tried again
+          after the next wait; on `connect_timeout`, the connector first stops the held process.
+        kind: connector
+        needs: [spawn-wrapper]
+        once: true
+        covers:
+          - connector-api#restarts
+          - connector-api#errors.spawn_failed
+      respawn.other-error-ends:
+        title: Another error ends respawning
+        expectation: >-
+          On a configured endpoint, a restart whose backend fails verification (the wrapper starts
+          a fake with a wrong proof) emits `lost` with reason `unavailable` and error
+          `verification_failed`.
+        kind: connector
+        backends: [app, fake]
+        needs: [spawn-wrapper]
+        once: true
+        covers:
+          - connector-api#restarts
+          - connector-api#lost_reasons.unavailable
+      respawn.budget-not-applied:
+        title: The reconnect budget doesn't bound a respawn
+        expectation: >-
+          With `reconnectBudget` 1 and `respawnBackoff` 3, the connector emits `respawned`, not
+          `lost`.
+        kind: connector
+        needs: [spawn-wrapper]
+        once: true
+        covers:
+          - connector-api#restarts
+      respawn.keeps-directory:
+        title: The generated directory outlasts restarts
+        expectation: >-
+          The generated directory stays across restarts, and is removed once the connector gives up,
+          and after `close()`.
+        kind: connector
+        needs: [spawn-wrapper]
+        transports: [unix, tcp]
+        covers:
+          - connector-api#restarts
+          - protocol-v1#generated-files
+      respawn.close-during:
+        title: "`close()` ends a respawn"
+        expectation: >-
+          With `respawnBackoffMaximum` equal to `respawnBackoff`, so every wait is the same,
+          `close()` during the wait before a restart, and while the restarted process is held
+          before it is ready, ends the respawn at once: the held process is stopped and the
+          directory is removed. No event follows, and the wrapper records no further spawn of that
+          backend, by the time a second `Backend` with the same respawn options, on an endpoint of
+          its own whose backend the runner kills once the first's `close()` has returned, has
+          emitted `respawned`.
+        kind: connector
+        needs: [spawn-wrapper]
+        covers:
+          - connector-api#restarts
+          - connector-api#the-backend
+      respawn.other-client-wins:
+        title: Another client's backend takes over
+        expectation: >-
+          When another client's backend serves the configured endpoint during the wait, or the
+          restart's process exits 75, the connector emits `reconnected`, not `respawned`. Killing
+          that backend later brings no respawn: the connector emits `reconnecting`, then `lost`
+          with reason `unavailable`, and the wrapper records no further spawn.
+        kind: connector
+        needs: [spawn-wrapper]
+        covers:
+          - connector-api#events-during-a-respawn
+          - connector-api#concurrent-respawns
+      respawn.attached-client:
+        title: An attached client during a respawn
+        expectation: >-
+          While client A respawns the backend, attached client B emits `reconnecting`, then
+          `reconnected` with a new ID within its budget, never `respawned`; with a budget shorter
+          than A's wait, `lost` with reason `unavailable`.
+        kind: connector
+        needs: [spawn-wrapper]
+        covers:
+          - connector-api#attached-clients-during-a-respawn
+          - connector-api#when-a-connector-respawns
+      respawn.requests-and-streams:
+        title: Requests and streams across a respawn
+        expectation: >-
+          Across a respawn, a request not yet sent waits and succeeds, a held GET is sent again once
+          to the new backend, an SSE stream resumes, and an open WebSocket ends, with no second
+          WebSocket request at the new backend by the time a request issued once the connector has
+          emitted `respawned` has reached it.
+        kind: connector
+        needs: [spawn-wrapper, reference-app-control]
+        covers:
+          - connector-api#requests-and-streams-during-a-respawn
+  stdio:
+    title: A spawned backend's stdio
+    description: Where a spawned backend's streams go.
+    cases:
+      stdio.stdin-null:
+        title: stdin reads the null device
+        expectation: By default, `POST /input` answers `eof`.
+        kind: connector
+        covers:
+          - connector-api#a-spawned-backends-stdio
+          - connector-api#options.stdin
+      stdio.stdin-pipe:
+        title: A piped stdin
+        expectation: >-
+          With `stdin` `pipe`, a line the adapter writes to the exposed stream is what `POST /input`
+          answers.
+        kind: connector
+        covers:
+          - connector-api#a-spawned-backends-stdio
+          - connector-api#options.stdin
+      stdio.output-logged:
+        title: Output goes to the log
+        expectation: >-
+          By default, lines `POST /output` writes to stdout and stderr arrive as `backend_output`
+          records, one per line, with their stream and text, at the same level.
+        kind: connector
+        covers:
+          - connector-api#a-spawned-backends-stdio
+          - connector-api#log_events.backend_output
+          - connector-api#logging
+          - connector-api#options.stdout
+          - connector-api#options.stderr
+      stdio.line-handling:
+        title: How output splits into lines
+        expectation: >-
+          Lines ending in CRLF are logged without the CR, invalid UTF-8 as U+FFFD, and a line longer
+          than `output_line_maximum` in pieces no longer than it, split between characters.
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - connector-api#draining
+          - connector-api#constants.output_line_maximum
+      stdio.never-blocks:
+        title: A slow sink never blocks the backend
+        expectation: >-
+          With a stdout sink that stops reading, `POST /output` writing more than
+          `output_queue_maximum` and the pipe's buffer completes, and later requests succeed; once
+          the sink reads again, `output_dropped` logs the bytes dropped, which with those delivered
+          equal those written.
+        kind: connector
+        covers:
+          - connector-api#draining
+          - connector-api#constants.output_queue_maximum
+          - connector-api#log_events.output_dropped
+      stdio.discard:
+        title: Discarded output
+        expectation: >-
+          With `stdout` and `stderr` `discard`, `POST /output` to each stream, writing more than the
+          pipe's buffer, completes. After `shutdown()`, no `backend_output` record has arrived by the
+          time the connector logs `backend_exited`, which it does only once it has read each pipe
+          to its end.
+        kind: connector
+        covers:
+          - connector-api#a-spawned-backends-stdio
+          - connector-api#options.stdout
+      stdio.inherit-stderr:
+        title: An inherited stderr
+        expectation: >-
+          With `stderr` `inherit`, the backend's stderr lines appear on the adapter's own stderr,
+          and `startup_failed` and `lost` carry a null `stderrTail`.
+        kind: connector
+        covers:
+          - connector-api#a-spawned-backends-stdio
+          - connector-api#options.stderr
+          - connector-api#the-stderr-tail
+      stdio.stderr-tail:
+        title: The stderr tail
+        expectation: >-
+          After the backend writes more than `stderr_tail` bytes to stderr and exits, the error's or
+          event's `stderrTail` is at most the last `stderr_tail` bytes, decoded as logged lines are,
+          without a partial first line.
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - connector-api#the-stderr-tail
+          - connector-api#constants.stderr_tail
+      stdio.end-wait:
+        title: The exit isn't held up by a held pipe
+        expectation: >-
+          When the backend exits while a process it started holds its stdout open for 30 s, the
+          connector reports the exit within `output_end_wait` plus 10 s (loose).
+        kind: connector
+        needs: [reference-app-control]
+        covers:
+          - connector-api#draining
+          - connector-api#constants.output_end_wait
+      stdio.no-console-window:
+        title: No console window on Windows
+        expectation: >-
+          With no stream `inherit`, the backend has no console window (the app's probe of
+          `GetConsoleWindow`).
+        kind: connector
+        needs: [reference-app-control]
+        platforms: [windows]
+        covers:
+          - connector-api#no-console-window-on-windows
+  logging:
+    title: Logging
+    description: What a connector logs, and what it never logs.
+    cases:
+      logging.canary:
+        title: No secret in any output (canary)
+        expectation: >-
+          At the most verbose level, with a canary token and canaries in a query, an `env` value and
+          an argument, through connect, requests, a lease drop and reconnect, and `close()`: no
+          record of the connector's own, no event, no error message and no line of the adapter's
+          stderr holds the token, a session secret it used (from the values the `Backend` exposed),
+          an enrollment header, the query, the `env` value or the argument; and no `backend_output`
+          record holds the token or a secret.
+        kind: connector
+        needs: [server-test-hooks]
+        covers:
+          - connector-api#logging
+          - protocol-v1#tokens
+          - protocol-v1#threats
+      logging.silent-by-default:
+        title: Silent until turned on
+        expectation: >-
+          With logging not turned on, the connector logs nothing through `connect()`, a request and
+          `close()`: by the time `close()` returns, no record has reached the adapter, and its
+          stderr holds no connector output.
+        kind: connector
+        once: true
+        covers:
+          - connector-api#logging
+      logging.context:
+        title: Every record's context
+        expectation: >-
+          With one `Backend`, every record carries `name` (null without one) and `clientId`: null
+          before the first lease, and the current lease's after, changing with a reconnect.
+        kind: connector
+        needs: [server-test-hooks]
+        once: true
+        covers:
+          - connector-api#logging
+          - connector-api#options.name
+      logging.native-unavailable:
+        title: A missing native piece is logged
+        expectation: >-
+          With its optional native piece missing, the connector logs `native_unavailable` naming the
+          feature.
+        kind: connector
+        once: true
+        relies_on: [native_piece]
+        covers:
+          - connector-api#transports-and-proxies
+          - connector-api#log_events.native_unavailable
+  schema:
+    title: Schema
+    description: The app's OpenAPI schema and the schema CLI.
+    cases:
+      schema.reserved-routes-absent:
+        title: Reserved routes stay out of the app's schema
+        expectation: >-
+          The app's `/openapi.json` served through pipeapi equals the reference app's own
+          `app.openapi()`, with no path under `/__pipeapi/`, as #12 designs it.
+        kind: server
+        once: true
+        covers:
+          - protocol-v1#reserved-routes
+      # --strict would flag the reference app's untyped routes, so the strict check needs a fixture app of its own.
+      schema.check-and-strict:
+        title: "`--check` and `--strict`"
+        expectation: >-
+          `pipeapi openapi --check` passes against a committed schema of the reference app and fails
+          once the app drifts from it; `--strict` passes on a fixture app whose operations are all
+          typed and fails on one with an untyped operation, as #12 designs them.
+        kind: server
+        backends: []
+        needs: [schema-cli]
+        once: true
+  compat:
+    title: Compatibility
+    description: Released versions against each other.
+    cases:
+      compat.version-skew:
+        title: Old and new against each other
+        expectation: >-
+          The newest connector against the oldest supported server, and the newest server against
+          the oldest supported connector, pass the full suite, as #23 designs it.
+        kind: connector
+        needs: [released-versions]
+        covers:
+          - protocol-v1#protocol-versions
+          - protocol-v1#versioning
+  debug-proxy:
+    title: Debug proxy
+    description: The `pipeapi proxy` command.
+    cases:
+      debug-proxy.refuses-cross-origin:
+        title: The proxy refuses other origins and rebinding
+        expectation: >-
+          Requests to the proxy with an `Origin` other than its own, or a Host other than
+          `localhost`, `127.0.0.1` or `[::1]` with its port, are rejected, as #13 designs it.
+        kind: server
+        needs: [debug-proxy]
+        once: true
+      debug-proxy.swagger-ui:
+        title: Swagger UI works through the proxy
+        expectation: >-
+          `/docs` and `/openapi.json` load through the proxy, and the client-ID route reports the
+          proxy's client ID, as #13 designs it.
+        kind: server
+        needs: [debug-proxy]
+        once: true
+  packaging:
+    title: Packaging
+    description: Frozen backends.
+    cases:
+      packaging.pyinstaller-onefile:
+        title: A PyInstaller onefile backend
+        expectation: >-
+          A PyInstaller onefile backend connects, its hello's `pid` is the bootloader's child's, and
+          it exits after the last lease, as #19 designs it.
+        kind: connector
+        needs: [frozen-build]
+        transports: [npipe]
+        covers:
+          - protocol-v1#hello-proof
+  electron:
+    title: Electron
+    description: The `pipeapi/electron` subpath (Node only).
+    cases:
+      electron.renderer-post:
+        title: Renderers reach the backend through the scheme
+        expectation: >-
+          A renderer loaded from `file://`, from an `app://` scheme and from a dev-server origin
+          POSTs JSON to `py://` and gets the app's response, as #11 designs it.
+        kind: connector
+        needs: [electron]
+        relies_on: [electron]
+      electron.token-kept-from-renderer:
+        title: No renderer holds the token
+        expectation: No renderer process's environment, arguments or page globals hold the token.
+        kind: connector
+        needs: [electron]
+        relies_on: [electron]
+        covers:
+          - protocol-v1#tokens
+
+invariants:
+  invariant.contract-schemas:
+    title: What the raw client receives meets the contract's schemas
+    expectation: >-
+      Every reserved-route response and lease event the raw client receives validates against
+      `protocol/v1/`; a violation fails the case by name.
+    covers:
+      - protocol-v1#openapi-document
+      - protocol-v1#routes.hello
+      - protocol-v1#routes.lease
+      - protocol-v1#routes.renew
+      - protocol-v1#routes.shutdown
+      - protocol-v1#lease-stream
+  invariant.fake-contract-schemas:
+    title: What the fake server exchanges meets the contract's schemas
+    expectation: >-
+      Every reserved-route response and lease event the fake server's peer exchanges with it
+      validates against `protocol/v1/`; a violation fails the case by name.
+    needs: [fake-server]
+    covers:
+      - protocol-v1#openapi-document
+      - protocol-v1#routes.hello
+      - protocol-v1#routes.lease
+      - protocol-v1#routes.renew
+      - protocol-v1#routes.shutdown
+      - protocol-v1#lease-stream
+  invariant.adapter-shapes:
+    title: Every event, error and log record meets the connector API's definitions
+    expectation: >-
+      Every event, error and log record an adapter reports validates against the connector API's
+      `$defs`, closed with `unevaluatedProperties: false`; codes are the strings the connector
+      carries.
+    covers:
+      - connector-api#lifecycle-events
+      - connector-api#errors
+      - connector-api#logging
+      - connector-api#names-in-each-language
+  invariant.event-order:
+    title: Every outage ends in exactly one event
+    expectation: >-
+      Every `reconnecting` is followed by exactly one of `reconnected`, `respawned` or `lost`, with
+      no event between, unless `close()` comes first; no event follows `lost` or `close()`.
+    covers:
+      - connector-api#lease-loss
+      - connector-api#lost
+      - connector-api#the-backend
+  invariant.rejected-never-reached-app:
+    title: A rejected request never reaches the app
+    expectation: >-
+      A response carrying `X-PipeAPI-Rejected` leaves no `request` record in the app's log.
+    needs: [server]
+    covers:
+      - protocol-v1#rejections
+  invariant.no-token-in-output:
+    title: The token appears in no adapter output
+    expectation: The case's token appears in no adapter output, at the case's own logging level.
+    covers:
+      - protocol-v1#tokens
+      - connector-api#logging
+
+uncovered:
+  protocol-v1#conventions: The key words and the contract's files, which state no behavior.
+  protocol-v1#terms: Definitions, which state no behavior.
+  protocol-v1#endpoints: A heading whose subsections hold its rules.
+  protocol-v1#lifetime: A heading whose subsections hold its rules.
+  protocol-v1#security-considerations: A heading whose subsections hold its rules.
+  protocol-v1#trust-boundary: The protocol's scope, which no outcome can break.
+  protocol-v1#registry: A heading whose tables' rows the cases that use them cover.
+  protocol-v1#constants: A table whose rows the cases that use them cover.
+  protocol-v1#durations: A table whose rows the cases that use them cover.
+  connector-api#conventions: The key words, the terms and the contract's file, which state no behavior.
+  connector-api#options: >-
+    A table whose rows the cases that use them cover. Its one sentence, that a language may also
+    accept a value JSON can't carry, is each language's idiom, which each package's own tests hold.
+  connector-api#constants: A table whose rows the cases that use them cover.

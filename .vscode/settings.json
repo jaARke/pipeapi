@@ -1,0 +1,13 @@
+{
+	// Pyright reads its base's comments, so the editor reads the file as JSON with comments. A window
+	// setting, which VS Code applies from here only when the repository is opened as a folder;
+	// pipeapi.code-workspace sets it for the workspace
+	"files.associations": { "pyright.base.json": "jsonc" },
+	// Validates the Pyright base against the schema SchemaStore gives pyrightconfig.json
+	"json.schemas": [
+		{
+			"fileMatch": ["/pyright.base.json"],
+			"url": "https://raw.githubusercontent.com/microsoft/pyright/main/packages/vscode-pyright/schemas/pyrightconfig.schema.json"
+		}
+	]
+}

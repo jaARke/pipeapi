@@ -1,0 +1,21 @@
+{"type":"hello","adapterProtocol":1,"connector":{"name":"dotnet","version":"0.1.0"},"pid":4242,"transports":["npipe","tcp"],"capabilities":["peer_pid","pipe_identification","typed_client"]}
+{"type":"command","id":1,"command":"connect","options":{"endpoint":"npipe:////./pipe/pipeapi-demo","token":"xE8-qmrfmvU1YE4Pk6GP5QD7W6cIaTbAXP145cRx_6g"}}
+{"type":"event","event":"started","id":1}
+{"type":"reply","id":1,"command":"connect","result":{"clientId":"c1"}}
+{"type":"command","id":2,"command":"typed_request","backend":1,"operation":"create_item","requestBody":{"name":"cup","tags":["kitchen"]}}
+{"type":"event","event":"started","id":2}
+{"type":"reply","id":2,"command":"typed_request","result":{"value":{"id":1,"name":"cup","tags":["kitchen"]}}}
+{"type":"command","id":3,"command":"typed_request","backend":1,"operation":"list_items"}
+{"type":"event","event":"started","id":3}
+{"type":"reply","id":3,"command":"typed_request","result":{"value":[{"id":1,"name":"cup","tags":["kitchen"]}]}}
+{"type":"command","id":4,"command":"request","backend":1,"via":"primitive","method":"POST","target":"/items","headers":[["Content-Type","application/json"]],"body":{"text":"{\"tags\":\"kitchen\"}"},"validate":true}
+{"type":"event","event":"started","id":4}
+{"type":"event","event":"response","request":4,"status":422,"headers":[["date","Wed, 28 Oct 2026 12:00:00 GMT"],["server","uvicorn"],["content-length","201"],["content-type","application/json"]]}
+{"type":"reply","id":4,"command":"request","error":{"code":"validation_error","detail":[{"loc":["body","name"],"msg":"Field required","type":"missing"},{"loc":["body","tags"],"msg":"Input should be a valid list","type":"list_type"}],"message":"the app refused the request: 2 validation failures"}}
+{"type":"command","id":5,"command":"request","backend":1,"via":"primitive","method":"GET","target":"/status/422","validate":true}
+{"type":"event","event":"started","id":5}
+{"type":"event","event":"response","request":5,"status":422,"headers":[["date","Wed, 28 Oct 2026 12:00:00 GMT"],["server","uvicorn"],["content-length","14"],["content-type","application/json"]]}
+{"type":"event","event":"response_chunk","request":5,"text":"{\"status\":422}"}
+{"type":"reply","id":5,"command":"request","result":{}}
+{"type":"command","id":6,"command":"close","backend":1}
+{"type":"reply","id":6,"command":"close","result":{}}

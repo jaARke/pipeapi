@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=components.schema.json
+# The pre-commit hook check-jsonschema validates this file against the same schema.
+
+reference-app:
+  description: The FastAPI reference app in `conformance/reference_app/`, with its routes, its settings and its observation log.
+  issue: 5
+  built: true
+reference-app-control:
+  description: >-
+    The reference app's control channel, which outlives the endpoint's release: a held lifespan
+    startup and shutdown, held requests, exits with a given status, the `/events` and `/output`
+    variants the cases name, a route that sets the rejection marker, and a console-window probe on
+    Windows.
+  issue: 5
+  built: false
+baseline-adapter:
+  description: The plain HTTP adapter, with proxies off, that runs the baseline cases against the reference app under plain uvicorn on loopback.
+  issue: 5
+  built: true
+fake-server:
+  description: The runner's scriptable fake server, on every transport, which answers hellos, leases, renewals and app requests as a case scripts them and records what it receives.
+  issue: 5
+  built: false
+system-proxy:
+  description: >-
+    The runner's control of the per-user system proxy and PAC URL on Windows, set through WinINet
+    for the length of a case and restored on every path, a hard kill of the runner included.
+  issue: 5
+  built: false
+spawn-wrapper:
+  description: The program an adapter's `command` names, which records each spawn, its arguments, directory and environment, then runs, holds or fails the backend, or runs the fake server.
+  issue: 5
+  built: false
+server:
+  description: >-
+    pipeapi's server: reading its environment, the reserved routes and the checks before the app,
+    the lease tracker, stopping and draining, its exit codes, its app API (client IDs, the client
+    list and revocation), and the reference app's routes that use that API.
+  issue: 6
+  built: false
+server-test-hooks:
+  description: The server's test hooks, which drop one lease while the backend runs and hold a stop once draining starts.
+  issue: 6
+  built: false
+listener-unix:
+  description: The server's Unix domain socket listener, with its lock file.
+  issue: 6
+  built: false
+listener-loopback:
+  description: The server's loopback listener, with its exclusive bind and its rendezvous file.
+  issue: 6
+  built: false
+listener-npipe:
+  description: The server's named pipe listener, with its pool of instances, whose size a case can set.
+  issue: 8
+  built: false
+reload-posix:
+  description: The server's `--reload` on Unix domain sockets and loopback.
+  issue: 9
+  built: false
+reload-npipe:
+  description: The server's `--reload` on named pipes.
+  issue: 10
+  built: false
+electron:
+  description: The Node connector's Electron integration, with an Electron harness.
+  issue: 11
+  built: false
+schema-cli:
+  description: The server's `pipeapi openapi` command, with `--check` and `--strict`.
+  issue: 12
+  built: false
+debug-proxy:
+  description: The server's `pipeapi proxy` command.
+  issue: 13
+  built: false
+frozen-build:
+  description: A PyInstaller onefile build of the reference app's backend on Windows.
+  issue: 19
+  built: false
+released-versions:
+  description: The released connectors and servers, installed from their registries, for running older and newer versions against each other.
+  issue: 23
+  built: false

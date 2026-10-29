@@ -3,6 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Form, HTTPException, status
 from pydantic import BaseModel, Field
 
+from reference_app.routers.operations import require_operation_id
+
 
 class NewItem(BaseModel):
     """An item to create."""
@@ -71,7 +73,11 @@ def create_router() -> APIRouter:
         The router.
     """
     store = ItemStore()
-    router = APIRouter(prefix="/items", tags=["items"])
+    router = APIRouter(
+        prefix="/items",
+        tags=["items"],
+        generate_unique_id_function=require_operation_id,
+    )
 
     async def list_items() -> list[Item]:
         """
@@ -84,10 +90,10 @@ def create_router() -> APIRouter:
 
     # HEAD apart from GET, since a route that names both has one operation ID for two
     # operations in the schema.
-    router.add_api_route("", list_items, methods=["GET"])
-    router.add_api_route("", list_items, methods=["HEAD"])
+    router.add_api_route("", list_items, methods=["GET"], operation_id="list_items")
+    router.add_api_route("", list_items, methods=["HEAD"], operation_id="head_items")
 
-    @router.post("", status_code=status.HTTP_201_CREATED)
+    @router.post("", status_code=status.HTTP_201_CREATED, operation_id="create_item")
     async def create_item(new: NewItem) -> Item:
         """
         Create an item from a JSON body.
@@ -97,7 +103,11 @@ def create_router() -> APIRouter:
         """
         return store.add(new)
 
-    @router.post("/form", status_code=status.HTTP_201_CREATED)
+    @router.post(
+        "/form",
+        status_code=status.HTTP_201_CREATED,
+        operation_id="create_item_from_form",
+    )
     async def create_item_from_form(
         name: Annotated[str, Form()],
         tags: Annotated[list[str], Form(default_factory=list)],
@@ -110,7 +120,11 @@ def create_router() -> APIRouter:
         """
         return store.add(NewItem(name=name, tags=tags))
 
-    @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+    @router.delete(
+        "/{item_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        operation_id="delete_item",
+    )
     async def delete_item(item_id: int) -> None:
         """
         Delete an item, answering with no content.

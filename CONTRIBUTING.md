@@ -23,9 +23,9 @@ Every check is a named command run with [just](https://just.systems/), and CI ru
 
 | Tool | Version | Needed for |
 | --- | --- | --- |
-| [Git](https://git-scm.com/) | Any recent | Cloning; the hooks check only the files Git tracks |
+| [Git](https://git-scm.com/) | Any recent | Cloning; the hooks check only the files Git tracks, and compare the contract (the protocol, the connector API, the case list and the adapter protocol) with `origin/main` as you last fetched it |
 | [just](https://just.systems/) | 1.56 or later | Every command |
-| [uv](https://docs.astral.sh/uv/) | 0.13.5 or later | Every check, and the `conformance` commands |
+| [uv](https://docs.astral.sh/uv/) | 0.13.5 or later | Every check, and the `conformance` and `scripts` commands |
 | [Node.js](https://nodejs.org/) and npm | The Node version `docs/.node-version` names, with npm 11.10.0 or later | The `docs` commands |
 
 `just check` and `just fix` run every project's commands, so they need all of these. Every other tool the checks use, Python and Go included, runs at a version the repository pins, and the checks fetch it themselves: [Pinned versions](docs/contributing/versions.md) lists each.
@@ -48,8 +48,10 @@ uv can also install just: `uv tool install rust-just`. On Windows on Arm, that p
 | `just check` | Runs every check a pull request must pass |
 | `just fix` | Applies every project's fixes and formatting |
 | `just docs::dev` | Serves the guide site locally, reloading each page as you edit it |
+| `just conformance::run <connector>` | Runs the conformance suite against one connector, by the name its `adapter.yaml` gives |
+| `just conformance::case <id> [connector]` | Runs one conformance case, against the baseline unless a connector is named |
 
-What `just lint` and each project's checks cover, and why, is on the pages in [`docs/contributing/`](docs/contributing/).
+What `just lint` and each project's checks cover, and why, is on the pages in [`docs/contributing/`](docs/contributing/). [Running the suite](docs/contributing/conformance/running.md) says what a conformance run holds and how to read its failures.
 
 ## Design
 

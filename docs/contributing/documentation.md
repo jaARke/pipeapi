@@ -54,7 +54,7 @@ The marker comes off once a release includes the feature. While no package has a
 
 The pages in this folder are Markdown read on GitHub, beside the code they describe. Each one:
 
-- covers one topic, short enough to read in a few minutes, and is listed in the folder's [index](README.md);
+- covers one topic, short enough to read in a few minutes, and is listed in the folder's [index](README.md); a topic that outgrows that becomes a folder of pages, whose README maps them and is the entry the index lists, as `conformance/` is;
 - records, for its component, what it guarantees, why it's built that way and what was rejected, so the closed issue isn't the only record;
 - describes what exists, with no history or plans, and changes in the pull request that changes what it describes;
 - links each fact's owner, the user documentation included, rather than restating it.

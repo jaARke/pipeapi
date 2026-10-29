@@ -1,0 +1,36 @@
+---
+import { conformanceComponentsFilePath } from '../../conformance';
+import { repositoryUrl } from '../../protocol';
+import { anchorOf } from '../protocol/contract';
+import { components } from './cases';
+import CodeText from './CodeText.astro';
+
+const table = await components();
+---
+
+<table>
+	<thead>
+		<tr>
+			<th>Component</th>
+			<th>Built by</th>
+			<th>Built</th>
+			<th>Description</th>
+		</tr>
+	</thead>
+	<tbody>
+		{table.map(({ id, description, issue, built }) => (
+			<tr id={anchorOf('components', id)}>
+				<td>
+					<code>{id}</code>
+				</td>
+				<td>
+					<a href={`${repositoryUrl}/issues/${String(issue)}`}>#{issue}</a>
+				</td>
+				<td>{built ? 'Yes' : 'No'}</td>
+				<td>
+					<CodeText text={description} where={`${conformanceComponentsFilePath}'s ${id}`} />
+				</td>
+			</tr>
+		))}
+	</tbody>
+</table>

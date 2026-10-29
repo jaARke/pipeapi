@@ -1,2 +1,4 @@
 # Python's bytecode; uv, ruff and pytest mark their own directories ignored
 __pycache__/
+# The conformance runner's traces, a directory for each run, which the runner never deletes
+/traces/

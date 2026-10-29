@@ -1,0 +1,17 @@
+{"type":"hello","adapterProtocol":1,"connector":{"name":"rust","version":"0.1.0"},"pid":4242,"transports":["npipe","tcp"],"capabilities":["peer_pid","pipe_identification"]}
+{"type":"command","id":1,"command":"connect","options":{"endpoint":"npipe:////./pipe/pipeapi-demo","token":"xE8-qmrfmvU1YE4Pk6GP5QD7W6cIaTbAXP145cRx_6g"}}
+{"type":"event","event":"started","id":1}
+{"type":"reply","id":1,"command":"connect","result":{"clientId":"c1"}}
+{"type":"command","id":2,"command":"read_backend","backend":1}
+{"type":"reply","id":2,"command":"read_backend","result":{"clientId":"c1","headers":[["Host","pipeapi.localhost"],["X-PipeAPI-Protocol","1"],["X-PipeAPI-Session","c1.hs525nVEyg0F760kOGuBD6FIlfAsIlLPbsDwfEE9SPE"]]}}
+{"type":"command","id":3,"command":"dial","backend":1}
+{"type":"event","event":"started","id":3}
+{"type":"reply","id":3,"command":"dial","result":{}}
+{"type":"command","id":4,"command":"connection_write","connection":3,"text":"GET /items HTTP/1.1\r\nHost: pipeapi.localhost\r\nX-PipeAPI-Protocol: 1\r\nX-PipeAPI-Session: c1.hs525nVEyg0F760kOGuBD6FIlfAsIlLPbsDwfEE9SPE\r\n\r\n"}
+{"type":"reply","id":4,"command":"connection_write","result":{}}
+{"type":"event","event":"connection_data","connection":3,"text":"HTTP/1.1 200 OK\r\ndate: Wed, 28 Oct 2026 12:00:00 GMT\r\nserver: uvicorn\r\ncontent-length: 2\r\ncontent-type: application/json\r\n\r\n[]"}
+{"type":"command","id":5,"command":"connection_close","connection":3}
+{"type":"reply","id":5,"command":"connection_close","result":{}}
+{"type":"event","event":"connection_end","connection":3}
+{"type":"command","id":6,"command":"close","backend":1}
+{"type":"reply","id":6,"command":"close","result":{}}

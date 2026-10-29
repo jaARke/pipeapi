@@ -1,0 +1,18 @@
+{"type":"hello","adapterProtocol":1,"connector":{"name":"dotnet","version":"0.1.0"},"pid":4242,"transports":["npipe","tcp"],"capabilities":["peer_pid","pipe_identification","typed_client"]}
+{"type":"command","id":1,"command":"connect","options":{"endpoint":"npipe:////./pipe/pipeapi-demo","token":"xE8-qmrfmvU1YE4Pk6GP5QD7W6cIaTbAXP145cRx_6g","command":"pipeapi","args":["run","reference_app.main:app"]}}
+{"type":"event","event":"started","id":1}
+{"type":"reply","id":1,"command":"connect","result":{"clientId":"c1"}}
+{"type":"command","id":2,"command":"request","backend":1,"via":"primitive","method":"POST","target":"/echo","headers":[["Content-Type","text/plain"]],"body":{"stream":true}}
+{"type":"event","event":"started","id":2}
+{"type":"command","id":3,"command":"body_chunk","request":2,"text":"first, "}
+{"type":"reply","id":3,"command":"body_chunk","result":{}}
+{"type":"command","id":4,"command":"body_chunk","request":2,"base64":"c2Vjb25k"}
+{"type":"reply","id":4,"command":"body_chunk","result":{}}
+{"type":"command","id":5,"command":"body_end","request":2}
+{"type":"reply","id":5,"command":"body_end","result":{}}
+{"type":"event","event":"response","request":2,"status":200,"headers":[["date","Wed, 28 Oct 2026 12:00:00 GMT"],["server","uvicorn"],["content-type","text/plain; charset=utf-8"],["transfer-encoding","chunked"]]}
+{"type":"event","event":"response_chunk","request":2,"text":"first, "}
+{"type":"event","event":"response_chunk","request":2,"text":"second"}
+{"type":"reply","id":2,"command":"request","result":{}}
+{"type":"command","id":6,"command":"close","backend":1}
+{"type":"reply","id":6,"command":"close","result":{}}

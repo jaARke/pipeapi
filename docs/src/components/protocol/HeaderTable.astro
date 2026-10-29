@@ -1,6 +1,6 @@
 ---
 import type { ProtocolVersion } from '../../protocol';
-import { anchorOf, openApiDocument } from './contract';
+import { anchorOf, checkTablePage, openApiDocument, protocolTablePage } from './contract';
 
 interface Props {
 	readonly version: ProtocolVersion;
@@ -8,6 +8,11 @@ interface Props {
 
 const { version } = Astro.props;
 const { headers } = await openApiDocument(version);
+checkTablePage(
+	Astro.locals.starlightRoute.id,
+	protocolTablePage(version, 'headers'),
+	`protocol/${version}/openapi.yaml's headers`
+);
 ---
 
 <table>

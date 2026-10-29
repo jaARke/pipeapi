@@ -6,6 +6,9 @@ mod docs
 # The conformance suite and its reference app, in conformance/.
 mod conformance
 
+# The scripts the checks run over the repository, such as the contract check, in scripts/.
+mod scripts
+
 prek := "uvx prek@0.5.5"
 
 # zizmor runs online audits whenever GH_TOKEN or GITHUB_TOKEN is set, which would make results
@@ -17,10 +20,10 @@ default:
     @just --list --list-submodules
 
 # Run every check a pull request must pass: the repository-wide lint, then each project's check.
-check: lint docs::check conformance::check
+check: lint docs::check conformance::check scripts::check
 
 # Apply every project's fixes and formatting.
-fix: docs::fix conformance::fix
+fix: docs::fix conformance::fix scripts::fix
 
 # Lint repository-wide files, such as the GitHub Actions workflows, the links in the Markdown read on GitHub and the protocol's contract.
 lint:

@@ -1,0 +1,50 @@
+---
+title: Options
+description: The options every connector takes, the environment it reads them from, what a spawned backend receives, and how a connector checks them.
+heading: true
+sidebar:
+  order: 3
+---
+
+import Cite from '../../../../components/protocol/Cite.astro';
+import ConnectorApiTable from '../../../../components/protocol/ConnectorApiTable.astro';
+
+<ConnectorApiTable section="options" version="v1" />
+
+A language may also accept a value that JSON can't carry where an option's description says so, such as a stream for <Cite name="stdin" connectorApi="options" />.
+
+## Environment
+
+The options with an environment variable in the table are read from the client's environment too. A connector reads its environment once, as `connect()` starts, and takes each option's value from the first of these that gives one:
+
+1. The option, as the app passes it.
+2. Its environment variable. A variable set to the empty string counts as unset.
+3. Its default, or what its description says happens when it is unset.
+
+With <Cite name="envPrefix" connectorApi="options" /> set, a connector reads each variable under a name made of the prefix, an underscore, and the variable's own name: with the prefix `WORKER`, it reads `WORKER_` followed by <Cite name="PIPEAPI_ENDPOINT" version="v1" />, and so on for every variable in the table, <Cite name="PIPEAPI_RENDEZVOUS" version="v1" /> included. It then never reads the unprefixed names, which belong to the backend whose clients use no prefix. A library that embeds a connector SHOULD set a prefix of its own, so that the variables an app sets for its own backend don't reach the library's.
+
+A value from the environment is checked as the option's value is, in the form the protocol's [environment variables](/pipeapi/reference/protocol-v1/connecting/#environment-variables) give it, such as whole seconds or `never` for a grace. A malformed one fails as the option would, and the error's message names the variable.
+
+## What a spawned backend receives
+
+The options <Cite name="startupGrace" connectorApi="options" />, <Cite name="idleGrace" connectorApi="options" /> and <Cite name="leaseTtl" connectorApi="options" /> apply only to a backend the connector spawns: a backend that is already running keeps its own. A spawned backend's environment is the client's own, with <Cite name="env" connectorApi="options" /> set over it, and then:
+
+1. The connector removes every variable whose name has the form of the protocol's [environment variables](/pipeapi/reference/protocol-v1/connecting/#environment-variables), the start they share followed by any name, whether or not the protocol defines that name, alone or after a prefix and an underscore, comparing names without regard to case on every OS.
+2. It sets <Cite name="PIPEAPI_ENDPOINT" version="v1" /> and <Cite name="PIPEAPI_TOKEN" version="v1" />, <Cite name="PIPEAPI_RENDEZVOUS" version="v1" /> when the endpoint is loopback with a generated port, and the variable of each grace and TTL option that has a value, each under its unprefixed name, as protocol v1 requires.
+
+So a backend never inherits the settings meant for another backend, or a token under a prefix, which the server wouldn't remove from its environment.
+
+## Validation
+
+A connector checks every option before it spawns a backend or connects:
+
+- An endpoint that breaks the rules for [endpoint URLs](/pipeapi/reference/protocol-v1/endpoints/#endpoint-urls) or [templates](/pipeapi/reference/protocol-v1/endpoints/#templates) fails with <Cite name="invalid_endpoint" connectorApi="errors" />, on every OS, and so does a loopback endpoint whose port is 0 given without its <Cite name="rendezvous" connectorApi="options" />.
+- A valid endpoint whose transport the OS lacks fails with <Cite name="unsupported_transport" connectorApi="errors" />, and so does a <Cite name="transport" connectorApi="options" /> the OS lacks.
+- Any other value that the table's type or description doesn't allow fails with <Cite name="invalid_option" connectorApi="errors" />. That includes:
+  - an endpoint given without a <Cite name="token" connectorApi="options" />, since a connector generates a token only with the endpoint it generates;
+  - an empty token;
+  - neither an endpoint nor a <Cite name="command" connectorApi="options" />, since no backend could serve the endpoint the connector would generate;
+  - a <Cite name="rendezvous" connectorApi="options" /> with no endpoint, or with an endpoint other than a loopback endpoint whose port is 0, since only such an endpoint has another client's rendezvous file;
+  - an <Cite name="idleGrace" connectorApi="options" /> of `never` for an endpoint the connector generates, since that backend would outlive every client that can reach it unless one was given the endpoint;
+  - a lease TTL below <Cite name="lease_ttl_minimum" section="durations" version="v1" />;
+  - a variable in <Cite name="env" connectorApi="options" /> that the connector would remove from a spawned backend's environment.

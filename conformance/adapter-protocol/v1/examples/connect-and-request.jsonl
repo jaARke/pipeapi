@@ -1,0 +1,14 @@
+{"type":"hello","adapterProtocol":1,"connector":{"name":"node","version":"0.1.0"},"pid":4242,"transports":["unix","tcp"],"capabilities":["peer_pid","typed_client"]}
+{"type":"command","id":1,"command":"connect","options":{"transport":"unix","name":"demo","command":"pipeapi","args":["run","reference_app.main:app"]},"logging":"info"}
+{"type":"event","event":"started","id":1}
+{"type":"event","event":"log","record":{"event":"spawned","level":"info","name":"demo","clientId":null,"pid":5120,"command":"pipeapi","endpoint":"unix:///run/user/1000/pipeapi-Xq3vT9/s.sock","message":"spawned the backend"}}
+{"type":"event","event":"log","record":{"event":"backend_output","level":"info","name":"demo","clientId":null,"stream":"stderr","line":"INFO:     Application startup complete.","message":"INFO:     Application startup complete."}}
+{"type":"event","event":"log","record":{"event":"lease_opened","level":"info","name":"demo","clientId":"c1","leaseTtl":null,"message":"opened a lease"}}
+{"type":"reply","id":1,"command":"connect","result":{"clientId":"c1"}}
+{"type":"command","id":2,"command":"request","backend":1,"via":"untyped","method":"GET","target":"/items","headers":[["Accept","application/json"]]}
+{"type":"event","event":"started","id":2}
+{"type":"event","event":"response","request":2,"status":200,"headers":[["date","Wed, 28 Oct 2026 12:00:00 GMT"],["server","uvicorn"],["content-length","2"],["content-type","application/json"]]}
+{"type":"event","event":"response_chunk","request":2,"text":"[]"}
+{"type":"reply","id":2,"command":"request","result":{}}
+{"type":"command","id":3,"command":"close","backend":1}
+{"type":"reply","id":3,"command":"close","result":{}}

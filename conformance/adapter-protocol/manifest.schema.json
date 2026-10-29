@@ -1,0 +1,26 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Adapter manifest",
+	"description": "How the conformance runner starts one connector's adapter, in a file named adapter.yaml in the directory that holds the adapter, beside the connector's expected-failures.yaml. The runner finds every such file the repository tracks and picks the one whose connector a run names. It belongs to no adapter protocol version: the adapter's hello names the version it speaks.",
+	"type": "object",
+	"properties": {
+		"connector": {
+			"description": "The connector's name, which a run names and the adapter's hello must give.",
+			"$ref": "v1/adapter-protocol.schema.json#/$defs/hello/properties/connector/properties/name"
+		},
+		"command": {
+			"description": "The program the runner starts, without a shell, and its arguments. A program named with a slash is a path relative to the manifest's directory; any other is looked up first in the scripts directory of the runner's own environment, which `uv run` puts first on PATH, then on PATH. On Windows a program's .exe may be left out.",
+			"type": "array",
+			"items": { "type": "string", "minLength": 1 },
+			"minItems": 1
+		},
+		"directory": {
+			"description": "The adapter's working directory, relative to the manifest's directory, with forward slashes.",
+			"type": "string",
+			"minLength": 1,
+			"default": "."
+		}
+	},
+	"required": ["connector", "command"],
+	"additionalProperties": false
+}

@@ -1,0 +1,83 @@
+#:schema https://www.schemastore.org/ruff.json
+# Every Python project's ruff configuration extends this file. A project adds rules with
+# extend-select and per-file ignores with extend-per-file-ignores, since its own select
+# would replace the rules and ignores below, and its own per-file-ignores those below.
+
+[lint]
+# The DOC rules, which check a docstring's Returns, Yields and Raises sections, are
+# preview rules, and a preview rule runs only when selected by its full code. Preview
+# also gives stable rules their preview behavior.
+preview = true
+explicit-preview-rules = true
+# RUF100 rejects a noqa marker that suppresses nothing, so no marker outlives what it
+# excuses.
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "C4",
+    "UP",
+    "ARG",
+    "T20",
+    "TID251",
+    "RUF100",
+    "ASYNC",
+    "BLE",
+    "D",
+    "D213",
+    # Not DOC502, which reports a Raises entry the function itself does not raise: Raises
+    # names each exception a caller may see, raised through a call too.
+    "DOC102",
+    "DOC201",
+    "DOC202",
+    "DOC402",
+    "DOC403",
+    "DOC501",
+    "FBT001",
+    "FBT002",
+    "G",
+    "INP",
+    "LOG",
+    "N",
+    "PGH",
+    "PT",
+    "PTH",
+    "SIM115",
+]
+ignore = [
+    # Modules need not carry a docstring.
+    "D100",
+    "D104",
+    # A dunder does what its protocol says, and a class's docstring covers its constructor.
+    "D105",
+    "D107",
+    # A summary may run to a second line, and it starts on the docstring's second line (D213).
+    "D205",
+    "D212",
+    # An exception named for the failure it reports, such as StartupFailure, needs no
+    # Error suffix.
+    "N818",
+    # pytest's assertion rewriting reports each operand of a composite assertion.
+    "PT018",
+]
+
+# Banned in every file, the tests included, so only the module a project exempts reads the
+# environment. A project's own table would replace this one whole, so a project sets none and
+# exempts its module with extend-per-file-ignores.
+[lint.flake8-tidy-imports.banned-api]
+"os.environ".msg = "Read the environment in the project's environment module."
+"os.environb".msg = "Read the environment in the project's environment module."
+"os.getenv".msg = "Read the environment in the project's environment module."
+"os.getenvb".msg = "Read the environment in the project's environment module."
+
+# Docstrings in Google's form, with Args, Returns, Yields and Raises sections.
+[lint.pydocstyle]
+convention = "google"
+
+[lint.per-file-ignores]
+# pytest imports each test by its path, so a project's tests/ holds no __init__.py. A
+# test's name is its documentation, and the docstrings in tests/, its support's included,
+# need no sections. A glob here matches from the root, so this one matches every project's.
+"**/tests/**/*.py" = ["D1", "DOC", "INP001"]

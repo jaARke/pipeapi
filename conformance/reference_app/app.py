@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from reference_app.environment import Settings
 from reference_app.observations import ObservationLog, RecordRequests
 from reference_app.routers import items, process, requests, streams
+from reference_app.routers.operations import require_operation_id
 
 
 class StartupFailure(Exception):
@@ -40,7 +41,12 @@ def create_app(settings: Settings) -> FastAPI:
         yield
         log.record("shutdown")
 
-    app = FastAPI(title="pipeapi reference app", version="0.0.0", lifespan=lifespan)
+    app = FastAPI(
+        title="pipeapi reference app",
+        version="0.0.0",
+        lifespan=lifespan,
+        generate_unique_id_function=require_operation_id,
+    )
     app.add_middleware(RecordRequests, log=log)
     app.include_router(items.create_router())
     app.include_router(requests.create_router())

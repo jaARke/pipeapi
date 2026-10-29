@@ -9,8 +9,8 @@ from websockets.sync.client import connect
 
 from reference_app.routers import streams
 from reference_app.routers.streams import sse_event
-from tests.support.observations import read_observations
-from tests.support.server import Server
+from runner.observations import read_observations
+from runner.uvicorn_server import Server
 from tests.support.targets import Target
 
 # A WebSocket handshake or message answers in well under this.

@@ -28,6 +28,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The checked-out commit's parents too, one of which the contract's hooks compare with.
+          fetch-depth: 2
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: false
@@ -35,9 +37,21 @@ jobs:
         with:
           # settings.just's minimum-version, so CI proves the stated minimum.
           just-version: 1.56.0
-      # prek builds vacuum's golang hook with a Go toolchain it downloads, which takes minutes. The
-      # key covers what the store depends on: the platform, prek's version (in the root justfile)
-      # and the hooks' revisions; no fallback key, so a changed config starts from an empty store.
+      # The contract's hooks compare the change with origin/main, which must be the commit it
+      # applies to, or a rerun after main moved would report main's newer entries as removed. A
+      # pull request's merge commit applies to its first parent, and a push to main to the pushed
+      # commit's parent.
+      - name: Point origin/main at the commit the change applies to
+        if: github.event_name != 'workflow_dispatch'
+        run: git update-ref refs/remotes/origin/main HEAD^1
+      # A run by hand has no such commit, so it compares with main's tip.
+      - name: Fetch the integration branch
+        if: github.event_name == 'workflow_dispatch'
+        run: git fetch --no-tags --depth=1 origin '+refs/heads/main:refs/remotes/origin/main'
+      # prek builds vacuum's and oasdiff's golang hooks with a Go toolchain it downloads, which
+      # takes minutes. The key covers what the store depends on: the platform, prek's version (in
+      # the root justfile) and the hooks' revisions; no fallback key, so a changed config starts
+      # from an empty store.
       # The path is the Lint step's PREK_HOME, since a job's env can't read the runner context.
       - name: Cache prek's hook environments
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -108,12 +122,48 @@ jobs:
           just-version: 1.56.0
       - name: Check the conformance project
         run: just conformance::check
+      # A failed case's report names its trace, which only the runner's machine holds.
+      - name: Upload the conformance runner's traces
+        # A job that outlasts its timeout-minutes ends cancelled, not failed.
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: conformance-traces-${{ matrix.os }}
+          path: conformance/traces/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  scripts:
+    name: Scripts (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+          # The oldest uv that scripts/pyproject.toml's required-version allows, so CI proves
+          # the stated minimum.
+          version-file: scripts/pyproject.toml
+          resolution-strategy: lowest
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          # settings.just's minimum-version, so CI proves the stated minimum.
+          just-version: 1.56.0
+      - name: Check the scripts project
+        run: just scripts::check
 
   # The main ruleset requires only this check, so adding a job means adding it to needs.
   ci-passed:
     name: CI passed
     if: always()
-    needs: [repository, docs, conformance]
+    needs: [repository, docs, conformance, scripts]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

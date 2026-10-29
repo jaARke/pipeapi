@@ -6,7 +6,9 @@ import { parse } from 'yaml';
 import {
 	connectorApiFilePath,
 	connectorApiFileUrl,
+	contractStatuses,
 	protocolFileUrl,
+	type ContractStatus,
 	type ProtocolVersion,
 } from '../protocol';
 import { schemaText } from './json-schema';
@@ -17,10 +19,12 @@ import { arrayOf, recordOf, stringOf } from './narrow';
 // time.
 const passthrough = z.looseObject({});
 
-// The OpenAPI document's text, and the index of it that pages read. The index is the site's own
-// view of the document, which vacuum validates in `just lint`.
+// The OpenAPI document's text, and the index of it that pages and the sidebar read. The index is
+// the site's own view of the document, which vacuum validates in `just lint`.
 const openApiDocument = z.object({
 	source: z.string(),
+	summary: z.string(),
+	tags: z.array(z.object({ name: z.string(), summary: z.string() })),
 	routes: z.array(
 		z.object({
 			path: z.string(),
@@ -63,16 +67,20 @@ const connectorApiEntry = z.object({
 		.optional(),
 });
 
-// The index of the connector API's file that pages read, each section in the file's order. It is
-// the site's own view of the file, which `just lint` validates against its meta-schema.
+// The index of the connector API's file that pages read: its status, and each section in the file's
+// order. It is the site's own view of the file, which `just lint` validates against its
+// meta-schema.
 const connectorApiIndex = z.object({
-	options: z.array(connectorApiEntry),
-	request_options: z.array(connectorApiEntry),
-	events: z.array(connectorApiEntry),
-	lost_reasons: z.array(connectorApiEntry),
-	errors: z.array(connectorApiEntry),
-	log_events: z.array(connectorApiEntry),
-	constants: z.array(connectorApiEntry),
+	status: z.enum(contractStatuses),
+	sections: z.object({
+		options: z.array(connectorApiEntry),
+		request_options: z.array(connectorApiEntry),
+		events: z.array(connectorApiEntry),
+		lost_reasons: z.array(connectorApiEntry),
+		errors: z.array(connectorApiEntry),
+		log_events: z.array(connectorApiEntry),
+		constants: z.array(connectorApiEntry),
+	}),
 });
 
 type ConnectorApiEntry = z.infer<typeof connectorApiEntry>;
@@ -92,16 +100,15 @@ const operationMethods = [
 ] as const;
 
 /**
- * Loads a protocol version's `registry.yaml`, with an entry for each section. An entry's ID is the
- * section's key, and its data maps each name in the section to that name's entry, typed from
- * `registry.schema.json`.
+ * Loads a protocol version's `registry.yaml`, in one entry whose ID is the version: the registry as
+ * it is, with the version's status and each section, typed from `registry.schema.json`.
  *
  * @param version - The protocol version whose registry to read.
  * @returns A loader for a content collection.
  */
 export function registry(version: ProtocolVersion): Loader {
 	const loader = file(protocolFileUrl(version, 'registry.yaml').href, {
-		parser: (text) => sectionsOf(parse(text)),
+		parser: (text) => ({ [version]: recordOf(parse(text), 'registry.yaml') }),
 	});
 	return {
 		name: 'protocol-registry',
@@ -109,18 +116,15 @@ export function registry(version: ProtocolVersion): Loader {
 		createSchema: async () => {
 			const schema = fileURLToPath(protocolFileUrl(version, 'registry.schema.json'));
 			const types = await compileFromFile(schema, { bannerComment: '', format: false });
-			return {
-				schema: passthrough,
-				types: `${types}\nexport type Entry = Registry[keyof Registry];\n`,
-			};
+			return { schema: passthrough, types: `${types}\nexport type Entry = Registry;\n` };
 		},
 	};
 }
 
 /**
  * Loads a protocol version's `openapi.yaml`, in one entry whose ID is the version: the document's
- * text, for a page to show it as it is, and its reserved routes and headers, for pages to list and
- * cite them.
+ * text, for a page to show it as it is; its summary and tags, for the sidebar and the index pages
+ * to name its routes by; and its reserved routes and headers, for pages to list and cite them.
  *
  * @param version - The protocol version whose OpenAPI document to read.
  * @returns A loader for a content collection, typed with its schema, from which Astro infers the
@@ -134,9 +138,9 @@ export function openApi(version: ProtocolVersion): Loader & { schema: typeof ope
 }
 
 /**
- * Loads the connector API's file, in one entry whose ID is `connector-api`: its options, lifecycle
- * events, errors, log events and constants, each with what its table shows, for pages to list and
- * cite them.
+ * Loads the connector API's file, in one entry whose ID is `connector-api`: its status, and its
+ * options, lifecycle events, errors, log events and constants, each with what its table shows, for
+ * pages to list and cite them.
  *
  * @returns A loader for a content collection, typed with its schema, from which Astro infers the
  *   entry's type.
@@ -148,23 +152,28 @@ export function connectorApi(): Loader & { schema: typeof connectorApiIndex } {
 	return { name: 'connector-api', load: loader.load, schema: connectorApiIndex };
 }
 
-// What file() takes from a parser: a mapping from each entry's ID to its data.
-function sectionsOf(registry: unknown): Record<string, Record<string, Record<string, unknown>>> {
-	const sections: Record<string, Record<string, Record<string, unknown>>> = {};
-	for (const [section, entries] of Object.entries(recordOf(registry, 'registry.yaml'))) {
-		const names = recordOf(entries, `registry.yaml's ${section}`);
-		const result: Record<string, Record<string, unknown>> = {};
-		for (const [name, entry] of Object.entries(names)) {
-			result[name] = recordOf(entry, `registry.yaml's ${section}.${name}`);
-		}
-		sections[section] = result;
-	}
-	return sections;
-}
-
 function indexOf(source: string, document: unknown): OpenApiDocument {
 	const root = recordOf(document, 'openapi.yaml');
-	return { source, routes: routesOf(root), headers: headersOf(root) };
+	const info = recordOf(root.info, 'openapi.yaml info');
+	return {
+		source,
+		summary: stringOf(info.summary, 'openapi.yaml info summary'),
+		tags: tagsOf(root),
+		routes: routesOf(root),
+		headers: headersOf(root),
+	};
+}
+
+// Each tag by its name, which operations use, and its summary, which OpenAPI 3.2 gives for display.
+function tagsOf(document: Record<string, unknown>): OpenApiDocument['tags'] {
+	return arrayOf(document.tags ?? [], 'openapi.yaml tags').map((tag, index) => {
+		const where = `openapi.yaml's tag ${String(index + 1)}`;
+		const fields = recordOf(tag, where);
+		return {
+			name: stringOf(fields.name, `${where} name`),
+			summary: stringOf(fields.summary, `${where} summary`),
+		};
+	});
 }
 
 function routesOf(document: Record<string, unknown>): OpenApiDocument['routes'] {
@@ -225,14 +234,25 @@ function connectorApiIndexOf(document: unknown): ConnectorApiIndex {
 	const root = recordOf(document, connectorApiFilePath);
 	const definitions = recordOf(root.$defs, `${connectorApiFilePath}'s $defs`);
 	return {
-		options: optionsOf(definitions, 'options'),
-		request_options: optionsOf(definitions, 'request_options'),
-		events: unionOf(definitions, 'event', 'type'),
-		lost_reasons: enumerationOf(definitions, 'lost_reason'),
-		errors: unionOf(definitions, 'error', 'code'),
-		log_events: unionOf(definitions, 'log_record', 'event'),
-		constants: constantsOf(root['x-constants']),
+		status: statusOf(root['x-status'], `${connectorApiFilePath}'s x-status`),
+		sections: {
+			options: optionsOf(definitions, 'options'),
+			request_options: optionsOf(definitions, 'request_options'),
+			events: unionOf(definitions, 'event', 'type'),
+			lost_reasons: enumerationOf(definitions, 'lost_reason'),
+			errors: unionOf(definitions, 'error', 'code'),
+			log_events: unionOf(definitions, 'log_record', 'event'),
+			constants: constantsOf(root['x-constants']),
+		},
 	};
+}
+
+function statusOf(value: unknown, where: string): ContractStatus {
+	const status = contractStatuses.find((known) => known === value);
+	if (status === undefined) {
+		throw new Error(`${where} is not one of ${contractStatuses.join(', ')}.`);
+	}
+	return status;
 }
 
 // The properties of an object of options, each with its type, its default and its variable.

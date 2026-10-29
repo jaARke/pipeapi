@@ -1,0 +1,25 @@
+---
+import { anchorOf } from '../protocol/contract';
+
+interface Props {
+	/** The values, each shown as code, separated by commas. */
+	readonly values: readonly string[];
+	/** The section of this page's anchors each value links to, such as `components`. */
+	readonly linksTo?: string;
+}
+
+const { values, linksTo } = Astro.props;
+---
+
+{values.map((value, index) => (
+	<>
+		{index > 0 && ', '}
+		{linksTo === undefined ? (
+			<code>{value}</code>
+		) : (
+			<a href={`#${anchorOf(linksTo, value)}`}>
+				<code>{value}</code>
+			</a>
+		)}
+	</>
+))}

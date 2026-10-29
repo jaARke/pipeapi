@@ -6,6 +6,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request, WebSocket,
 from fastapi.responses import StreamingResponse
 
 from reference_app.observations import ObservationLog
+from reference_app.routers.operations import require_operation_id
 
 HOLD_DEADLINE_SECONDS: Final = 600.0
 """
@@ -41,9 +42,9 @@ def create_router(log: ObservationLog) -> APIRouter:
     Returns:
         The router.
     """
-    router = APIRouter()
+    router = APIRouter(generate_unique_id_function=require_operation_id)
 
-    @router.get("/events")
+    @router.get("/events", operation_id="events")
     async def events(
         request: Request,
         *,

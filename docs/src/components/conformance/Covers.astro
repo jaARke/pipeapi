@@ -1,0 +1,41 @@
+---
+import { specDocuments } from '../../protocol';
+import { documentTitle, resolveCitation } from './cases';
+
+interface Props {
+	/** The citations of a case or an invariant. */
+	readonly covers: readonly string[];
+	/** The ID of the case or invariant, for the error a citation that doesn't resolve fails with. */
+	readonly citedBy: string;
+}
+
+const { covers, citedBy } = Astro.props;
+const anchors = await Promise.all(covers.map((citation) => resolveCitation(citation, citedBy)));
+// Each document's anchors, in the order the citations give them.
+const groups = await Promise.all(
+	specDocuments.map(async (document) => ({
+		title: await documentTitle(document),
+		anchors: anchors.filter((anchor) => anchor.document === document),
+	}))
+);
+---
+
+{covers.length === 0 ? (
+	'None yet'
+) : (
+	<ul>
+		{groups
+			.filter(({ anchors: cited }) => cited.length > 0)
+			.map(({ title, anchors: cited }) => (
+				<li>
+					{title}:{' '}
+					{cited.map(({ kind, text, href }, index) => (
+						<>
+							{index > 0 && ', '}
+							<a href={href}>{kind === 'row' ? <code>{text}</code> : text}</a>
+						</>
+					))}
+				</li>
+			))}
+	</ul>
+)}

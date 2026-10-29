@@ -1,0 +1,622 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Adapter protocol v1",
+	"description": "A line the conformance runner and a connector's adapter exchange: a command on the adapter's stdin, or the adapter's hello, a reply or an event on its stdout. Each line is one JSON object.",
+	"x-status": "draft",
+	"oneOf": [
+		{ "$ref": "#/$defs/command" },
+		{ "$ref": "#/$defs/hello" },
+		{ "$ref": "#/$defs/reply" },
+		{ "$ref": "#/$defs/event" }
+	],
+	"$defs": {
+		"hello": {
+			"description": "The adapter's first line, which it writes once it has loaded its connector and before it reads a command.",
+			"type": "object",
+			"properties": {
+				"type": { "const": "hello" },
+				"adapterProtocol": { "description": "The version of the adapter protocol the adapter speaks.", "const": 1 },
+				"connector": {
+					"description": "The connector the adapter drives.",
+					"type": "object",
+					"properties": {
+						"name": {
+							"description": "The connector's name, such as node or dotnet, or baseline for the suite's plain HTTP client.",
+							"type": "string",
+							"pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+						},
+						"version": { "description": "The connector's version, as its package gives it.", "type": "string", "minLength": 1 }
+					},
+					"required": ["name", "version"],
+					"additionalProperties": false
+				},
+				"pid": { "description": "The adapter's process ID, which is the connector's client process.", "type": "integer", "minimum": 1 },
+				"transports": {
+					"description": "The transports the connector supports on this platform.",
+					"type": "array",
+					"items": { "$ref": "../../../protocol/connector-api/connector-api.schema.json#/$defs/transport" },
+					"minItems": 1,
+					"uniqueItems": true
+				},
+				"capabilities": {
+					"description": "The optional capabilities the adapter offers.",
+					"type": "array",
+					"items": { "$ref": "#/$defs/capability" },
+					"uniqueItems": true
+				}
+			},
+			"required": ["type", "adapterProtocol", "connector", "pid", "transports", "capabilities"],
+			"additionalProperties": false
+		},
+		"command": {
+			"description": "A command the runner writes to the adapter's stdin. The adapter answers each one with exactly one reply.",
+			"type": "object",
+			"properties": {
+				"type": { "const": "command" },
+				"id": { "description": "The command's ID, which the runner gives, never reuses with the same adapter, and finds again in the reply.", "$ref": "#/$defs/command_id" },
+				"command": { "description": "The command's name.", "type": "string" }
+			},
+			"required": ["type", "id", "command"],
+			"oneOf": [
+				{
+					"description": "Calls connect() with the options, passing a cancellation signal that cancel fires. The Backend it returns is named by this command's ID.",
+					"properties": {
+						"command": { "const": "connect" },
+						"options": {
+							"description": "The options, as the connector API spells them. stdin and stdout can't be inherit, since the backend would then read the runner's commands or write into the adapter's stdout.",
+							"$ref": "../../../protocol/connector-api/connector-api.schema.json#/$defs/options",
+							"properties": {
+								"stdin": { "not": { "const": "inherit" } },
+								"stdout": { "not": { "const": "inherit" } }
+							}
+						},
+						"logging": {
+							"description": "The level from which the adapter turns the connector's logging on, forwarding each record as a log event. Absent, the adapter turns nothing on.",
+							"$ref": "../../../protocol/connector-api/connector-api.schema.json#/$defs/log_record/properties/level"
+						},
+						"sinks": {
+							"description": "Sinks of its own the adapter supplies for a spawned backend's output streams, in place of the options for those streams.",
+							"type": "object",
+							"properties": {
+								"stdout": { "$ref": "#/$defs/sink" },
+								"stderr": { "$ref": "#/$defs/sink" }
+							},
+							"minProperties": 1,
+							"additionalProperties": false
+						}
+					},
+					"required": ["options"],
+					"allOf": [
+						{
+							"if": { "properties": { "sinks": { "required": ["stdout"] } }, "required": ["sinks"] },
+							"then": { "properties": { "options": { "not": { "required": ["stdout"] } } } }
+						},
+						{
+							"if": { "properties": { "sinks": { "required": ["stderr"] } }, "required": ["sinks"] },
+							"then": { "properties": { "options": { "not": { "required": ["stderr"] } } } }
+						}
+					]
+				},
+				{
+					"description": "Calls the Backend's close().",
+					"properties": { "command": { "const": "close" }, "backend": { "$ref": "#/$defs/backend" } },
+					"required": ["backend"]
+				},
+				{
+					"description": "Calls the Backend's shutdown().",
+					"properties": { "command": { "const": "shutdown" }, "backend": { "$ref": "#/$defs/backend" } },
+					"required": ["backend"]
+				},
+				{
+					"description": "Reads the Backend's clientId, and the current values of the headers a request on a dialed connection carries.",
+					"properties": { "command": { "const": "read_backend" }, "backend": { "$ref": "#/$defs/backend" } },
+					"required": ["backend"]
+				},
+				{
+					"description": "Fires the cancellation signal of a call still under way: connect()'s signal, or the abort signal of a request, an SSE iteration, a typed request, dial() or a WebSocket's opening. The cancelled command still gets its reply, with whatever its call then gives. A cancel of a command whose call has ended does nothing and returns.",
+					"properties": {
+						"command": { "const": "cancel" },
+						"commandId": { "description": "The ID of the command whose call to cancel.", "$ref": "#/$defs/command_id" }
+					},
+					"required": ["commandId"]
+				},
+				{
+					"description": "Sends a request through the untyped request or the Backend's primitive, writing its response as a response event and response_chunk events. The request is named by this command's ID.",
+					"properties": {
+						"command": { "const": "request" },
+						"backend": { "$ref": "#/$defs/backend" },
+						"via": { "$ref": "#/$defs/via" },
+						"method": { "$ref": "#/$defs/method" },
+						"target": { "$ref": "#/$defs/target" },
+						"headers": { "description": "Headers the request carries beside those the connector adds.", "$ref": "#/$defs/headers" },
+						"body": { "$ref": "#/$defs/body" },
+						"options": {
+							"description": "The request's options, as the connector API spells them.",
+							"$ref": "../../../protocol/connector-api/connector-api.schema.json#/$defs/request_options"
+						},
+						"timeout": { "$ref": "#/$defs/timeout" },
+						"validate": {
+							"description": "Whether the adapter applies ValidationError to the response before reading its body. When ValidationError gives an error, the reply carries it, and the adapter reads no body.",
+							"type": "boolean",
+							"default": false
+						}
+					},
+					"required": ["backend", "via", "method", "target"]
+				},
+				{
+					"description": "Writes a chunk of a request's streamed body. The reply comes once the adapter has handed the chunk to the body's stream.",
+					"$ref": "#/$defs/bytes",
+					"properties": { "command": { "const": "body_chunk" }, "request": { "$ref": "#/$defs/request" } },
+					"required": ["request"]
+				},
+				{
+					"description": "Ends a request's streamed body.",
+					"properties": { "command": { "const": "body_end" }, "request": { "$ref": "#/$defs/request" } },
+					"required": ["request"]
+				},
+				{
+					"description": "Calls an operation of the client generated from the reference app's schema, which the adapter built on the Backend's primitive as connect() returned. It needs the typed_client capability.",
+					"properties": {
+						"command": { "const": "typed_request" },
+						"backend": { "$ref": "#/$defs/backend" },
+						"operation": { "description": "The operation's operationId in the reference app's schema.", "type": "string", "minLength": 1 },
+						"parameters": {
+							"description": "The operation's path and query parameters, by the names the schema gives them.",
+							"type": "object",
+							"additionalProperties": { "type": ["string", "number", "boolean"] }
+						},
+						"requestBody": { "description": "The operation's request body, as JSON, which the generated client sends in its own form." }
+					},
+					"required": ["backend", "operation"]
+				},
+				{
+					"description": "Sends a GET request through the untyped request or the primitive and iterates its response with the SSE helper, writing each event as an sse_event event. The request is named by this command's ID.",
+					"properties": {
+						"command": { "const": "sse" },
+						"backend": { "$ref": "#/$defs/backend" },
+						"via": { "$ref": "#/$defs/via" },
+						"target": { "$ref": "#/$defs/target" },
+						"headers": { "description": "Headers the request carries beside those the connector adds.", "$ref": "#/$defs/headers" },
+						"options": {
+							"description": "The request's options, as the connector API spells them.",
+							"$ref": "../../../protocol/connector-api/connector-api.schema.json#/$defs/request_options"
+						},
+						"timeout": { "$ref": "#/$defs/timeout" }
+					},
+					"required": ["backend", "via", "target"]
+				},
+				{
+					"description": "Calls the Backend's dial(), then reads the connection until it ends, writing what it reads as connection_data events. The connection is named by this command's ID.",
+					"properties": { "command": { "const": "dial" }, "backend": { "$ref": "#/$defs/backend" } },
+					"required": ["backend"]
+				},
+				{
+					"description": "Writes to a dialed connection.",
+					"$ref": "#/$defs/bytes",
+					"properties": { "command": { "const": "connection_write" }, "connection": { "$ref": "#/$defs/connection" } },
+					"required": ["connection"]
+				},
+				{
+					"description": "Closes a dialed connection.",
+					"properties": { "command": { "const": "connection_close" }, "connection": { "$ref": "#/$defs/connection" } },
+					"required": ["connection"]
+				},
+				{
+					"description": "Opens a WebSocket through the path the connector's documentation gives, then writes each message it receives as a websocket_message event. The WebSocket is named by this command's ID.",
+					"properties": {
+						"command": { "const": "websocket_open" },
+						"backend": { "$ref": "#/$defs/backend" },
+						"target": { "$ref": "#/$defs/target" },
+						"headers": { "description": "Headers the opening handshake carries beside those the connector adds.", "$ref": "#/$defs/headers" }
+					},
+					"required": ["backend", "target"]
+				},
+				{
+					"description": "Sends a message on a WebSocket.",
+					"$ref": "#/$defs/websocket_data",
+					"properties": { "command": { "const": "websocket_send" }, "socket": { "$ref": "#/$defs/socket" } },
+					"required": ["socket"]
+				},
+				{
+					"description": "Starts a WebSocket's closing handshake. The reply comes once the WebSocket library's close call returns, before or after the websocket_closed event, which reports how it ended.",
+					"properties": {
+						"command": { "const": "websocket_close" },
+						"socket": { "$ref": "#/$defs/socket" },
+						"code": { "description": "The close code. Absent, the close frame carries none.", "$ref": "#/$defs/close_code" },
+						"reason": { "description": "The close reason, which needs a code.", "type": "string" }
+					},
+					"required": ["socket"],
+					"dependentRequired": { "reason": ["code"] }
+				},
+				{
+					"description": "Writes to the stream the Backend exposes for a piped stdin, which needs the connect command's options to set stdin to pipe.",
+					"$ref": "#/$defs/bytes",
+					"properties": { "command": { "const": "stdin_write" }, "backend": { "$ref": "#/$defs/backend" } },
+					"required": ["backend"]
+				},
+				{
+					"description": "Closes the stream the Backend exposes for a piped stdin.",
+					"properties": { "command": { "const": "stdin_close" }, "backend": { "$ref": "#/$defs/backend" } },
+					"required": ["backend"]
+				},
+				{
+					"description": "Lets a stalled sink read again, from then on as a collecting sink.",
+					"properties": {
+						"command": { "const": "sink_resume" },
+						"backend": { "$ref": "#/$defs/backend" },
+						"stream": { "$ref": "#/$defs/stream" }
+					},
+					"required": ["backend", "stream"]
+				}
+			],
+			"unevaluatedProperties": false
+		},
+		"reply": {
+			"description": "The adapter's answer to a command, written once the call the command made has returned or failed, after every event of that call.",
+			"type": "object",
+			"properties": {
+				"type": { "const": "reply" },
+				"id": {
+					"description": "The command's ID, or null when the adapter couldn't read a command from the line.",
+					"anyOf": [{ "$ref": "#/$defs/command_id" }, { "type": "null" }]
+				},
+				"command": { "description": "The command's name, as the command gave it, or null when the adapter couldn't read one.", "type": ["string", "null"] },
+				"result": { "description": "What the call returned, as the command's result says.", "type": "object" },
+				"error": { "$ref": "#/$defs/connector_error" },
+				"languageError": { "$ref": "#/$defs/language_error" },
+				"refusal": { "$ref": "#/$defs/refusal" }
+			},
+			"required": ["type", "id", "command"],
+			"oneOf": [
+				{ "description": "The call returned.", "required": ["result"] },
+				{ "description": "The call failed with one of the connector's errors.", "required": ["error"] },
+				{ "description": "The call failed with an error of the language's own.", "required": ["languageError"] },
+				{ "description": "The adapter didn't make the call.", "required": ["refusal"] }
+			],
+			"allOf": [
+				{
+					"description": "A line the adapter couldn't read a command from gets a refusal.",
+					"if": { "properties": { "id": { "type": "null" } }, "required": ["id"] },
+					"then": { "required": ["refusal"] }
+				}
+			],
+			"if": { "properties": { "command": { "const": "connect" } } },
+			"then": {
+				"properties": {
+					"result": {
+						"description": "What connect() returned.",
+						"properties": {
+							"clientId": {
+								"description": "The Backend's clientId once connect() returned, or null from the baseline adapter, whose plain HTTP client holds no lease.",
+								"anyOf": [{ "$ref": "#/$defs/client_id" }, { "type": "null" }]
+							}
+						},
+						"required": ["clientId"],
+						"additionalProperties": false
+					}
+				}
+			},
+			"else": {
+				"if": { "properties": { "command": { "const": "read_backend" } } },
+				"then": {
+					"properties": {
+						"result": {
+							"description": "The Backend's current values.",
+							"properties": {
+								"clientId": { "description": "The Backend's clientId.", "$ref": "#/$defs/client_id" },
+								"headers": {
+									"description": "The headers a request on a dialed connection carries, Host, X-PipeAPI-Protocol and X-PipeAPI-Session, with the values the Backend exposes.",
+									"$ref": "#/$defs/headers"
+								}
+							},
+							"required": ["clientId", "headers"],
+							"additionalProperties": false
+						}
+					}
+				},
+				"else": {
+					"if": { "properties": { "command": { "const": "typed_request" } } },
+					"then": {
+						"properties": {
+							"result": {
+								"description": "What the generated client returned.",
+								"properties": { "value": { "description": "The value the operation returned, as JSON, or null for an operation that returns none." } },
+								"required": ["value"],
+								"additionalProperties": false
+							}
+						}
+					},
+					"else": { "properties": { "result": { "description": "Every other command returns nothing.", "maxProperties": 0 } } }
+				}
+			},
+			"unevaluatedProperties": false
+		},
+		"event": {
+			"description": "What the adapter reports between replies: the progress of a call, or what a Backend or a connection did on its own.",
+			"type": "object",
+			"properties": {
+				"type": { "const": "event" },
+				"event": { "description": "The event's name.", "type": "string" }
+			},
+			"required": ["type", "event"],
+			"oneOf": [
+				{
+					"description": "A command's call is under way: the adapter has made it, or is about to make a call that blocks until its result. The adapter writes it for every connect, request, typed_request, sse, dial and websocket_open it carries out, before the call's other events.",
+					"properties": {
+						"event": { "const": "started" },
+						"id": { "description": "The command's ID.", "$ref": "#/$defs/command_id" }
+					},
+					"required": ["id"]
+				},
+				{
+					"description": "A lifecycle event the Backend emitted.",
+					"properties": {
+						"event": { "const": "lifecycle" },
+						"backend": { "$ref": "#/$defs/backend" },
+						"lifecycle": {
+							"description": "The event, as the connector API spells it.",
+							"$ref": "../../../protocol/connector-api/connector-api.schema.json#/$defs/event",
+							"unevaluatedProperties": false
+						}
+					},
+					"required": ["backend", "lifecycle"]
+				},
+				{
+					"description": "A record the connector logged at or above a level a connect command turned on. Its name tells which Backend logged it.",
+					"properties": {
+						"event": { "const": "log" },
+						"record": {
+							"description": "The record, as the connector API spells it, with every field the connector gave it.",
+							"$ref": "../../../protocol/connector-api/connector-api.schema.json#/$defs/log_record",
+							"properties": {
+								"message": { "description": "The record's message, as the language's logging mechanism formats it.", "type": "string" }
+							},
+							"required": ["message"],
+							"unevaluatedProperties": false
+						}
+					},
+					"required": ["record"]
+				},
+				{
+					"description": "Output a spawned backend wrote, as a sink the adapter supplied took it: a line, from a sink that takes lines, or bytes, from one that takes bytes.",
+					"$ref": "#/$defs/bytes_or_line",
+					"properties": {
+						"event": { "const": "output" },
+						"backend": { "$ref": "#/$defs/backend" },
+						"stream": { "$ref": "#/$defs/stream" }
+					},
+					"required": ["backend", "stream"]
+				},
+				{
+					"description": "A request's response headers arrived.",
+					"properties": {
+						"event": { "const": "response" },
+						"request": { "$ref": "#/$defs/request" },
+						"status": { "description": "The response's status.", "type": "integer", "minimum": 100, "maximum": 599 },
+						"headers": { "description": "The response's headers.", "$ref": "#/$defs/headers" }
+					},
+					"required": ["request", "status", "headers"]
+				},
+				{
+					"description": "A chunk of a response's body, as the adapter read it.",
+					"$ref": "#/$defs/bytes",
+					"properties": { "event": { "const": "response_chunk" }, "request": { "$ref": "#/$defs/request" } },
+					"required": ["request"]
+				},
+				{
+					"description": "An event the SSE helper gave.",
+					"properties": {
+						"event": { "const": "sse_event" },
+						"request": { "$ref": "#/$defs/request" },
+						"eventType": { "description": "The event's type.", "type": "string" },
+						"data": { "description": "The event's data.", "type": "string" },
+						"eventId": { "description": "The event's ID, or null when the helper gives none.", "type": ["string", "null"] }
+					},
+					"required": ["request", "eventType", "data", "eventId"]
+				},
+				{
+					"description": "What the adapter read from a dialed connection.",
+					"$ref": "#/$defs/bytes",
+					"properties": { "event": { "const": "connection_data" }, "connection": { "$ref": "#/$defs/connection" } },
+					"required": ["connection"]
+				},
+				{
+					"description": "A dialed connection's reading ended: the other end closed it, or reading failed with the error given.",
+					"properties": {
+						"event": { "const": "connection_end" },
+						"connection": { "$ref": "#/$defs/connection" },
+						"error": { "$ref": "#/$defs/connector_error" },
+						"languageError": { "$ref": "#/$defs/language_error" }
+					},
+					"required": ["connection"],
+					"not": { "required": ["error", "languageError"] }
+				},
+				{
+					"description": "A message the WebSocket received.",
+					"$ref": "#/$defs/websocket_data",
+					"properties": { "event": { "const": "websocket_message" }, "socket": { "$ref": "#/$defs/socket" } },
+					"required": ["socket"]
+				},
+				{
+					"description": "A WebSocket closed, whichever end closed it, with the code and reason its library reports, or with the error its library reported instead.",
+					"properties": {
+						"event": { "const": "websocket_closed" },
+						"socket": { "$ref": "#/$defs/socket" },
+						"code": { "description": "The close code the library reports.", "$ref": "#/$defs/close_code" },
+						"reason": { "description": "The close reason the library reports, which may be empty.", "type": "string" },
+						"languageError": { "$ref": "#/$defs/language_error" }
+					},
+					"required": ["socket"],
+					"oneOf": [{ "required": ["code", "reason"] }, { "required": ["languageError"] }]
+				}
+			],
+			"unevaluatedProperties": false
+		},
+		"capability": {
+			"description": "An optional capability, which a case that relies on it needs the adapter's hello to declare.",
+			"oneOf": [
+				{ "const": "electron", "description": "The connector has an Electron integration, which the adapter runs in an Electron harness." },
+				{
+					"const": "native_piece",
+					"description": "The connector has an optional native piece, such as a Node addon, and the adapter can run it with that piece missing."
+				},
+				{
+					"const": "peer_pid",
+					"description": "The connector checks the hello's PID against the PID of the connection's other end, on pipes and sockets, which a language's runtime may not read."
+				},
+				{ "const": "pipe_identification", "description": "The connector opens named pipes at identification-level impersonation." },
+				{ "const": "typed_client", "description": "The adapter answers typed_request through a client generated from the reference app's schema." }
+			]
+		},
+		"command_id": {
+			"description": "A command's ID. A Backend, a request, a dialed connection or a WebSocket is named by the ID of the command that opened it.",
+			"type": "integer",
+			"minimum": 1
+		},
+		"backend": { "description": "The Backend, named by the ID of the connect command that returned it.", "$ref": "#/$defs/command_id" },
+		"request": { "description": "The request, named by the ID of the request or sse command that sent it.", "$ref": "#/$defs/command_id" },
+		"connection": { "description": "The dialed connection, named by the ID of the dial command that opened it.", "$ref": "#/$defs/command_id" },
+		"socket": { "description": "The WebSocket, named by the ID of the websocket_open command that opened it.", "$ref": "#/$defs/command_id" },
+		"client_id": {
+			"description": "A client ID the server gave.",
+			"$ref": "../../../protocol/connector-api/connector-api.schema.json#/$defs/client_id"
+		},
+		"via": {
+			"description": "What the request goes through.",
+			"oneOf": [
+				{ "const": "untyped", "description": "The connector's untyped request." },
+				{ "const": "primitive", "description": "The Backend's primitive, the language's standard HTTP client set up for the backend." }
+			]
+		},
+		"method": { "description": "The request's method.", "type": "string", "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$" },
+		"target": { "description": "The request's path and query, which the adapter passes on as they are, decoding and normalizing nothing.", "type": "string", "pattern": "^/" },
+		"headers": {
+			"description": "Headers in order, a name repeated for each of its values.",
+			"type": "array",
+			"items": {
+				"description": "A header's name and one of its values.",
+				"type": "array",
+				"prefixItems": [{ "type": "string", "minLength": 1 }, { "type": "string" }],
+				"minItems": 2,
+				"items": false
+			}
+		},
+		"body": {
+			"description": "A request's body: whole bytes, a form the language's own encoder builds, URL-encoded or multipart, or a stream the runner feeds with body_chunk and body_end.",
+			"type": "object",
+			"properties": {
+				"text": { "$ref": "#/$defs/bytes/properties/text" },
+				"base64": { "$ref": "#/$defs/bytes/properties/base64" },
+				"form": { "description": "A URL-encoded form's fields.", "$ref": "#/$defs/fields" },
+				"multipart": { "description": "A multipart form's fields.", "$ref": "#/$defs/fields" },
+				"stream": { "description": "A streamed body, which ends with body_end.", "const": true }
+			},
+			"oneOf": [
+				{ "required": ["text"] },
+				{ "required": ["base64"] },
+				{ "required": ["form"] },
+				{ "required": ["multipart"] },
+				{ "required": ["stream"] }
+			],
+			"additionalProperties": false
+		},
+		"fields": {
+			"description": "A form's fields in order, a name repeated for each of its values.",
+			"type": "array",
+			"items": {
+				"description": "A field's name and one of its values.",
+				"type": "array",
+				"prefixItems": [{ "type": "string", "minLength": 1 }, { "type": "string" }],
+				"minItems": 2,
+				"items": false
+			}
+		},
+		"timeout": {
+			"description": "The language's own timeout for the request, such as AbortSignal.timeout() or an HttpClient's Timeout, which ends it with the language's timeout error.",
+			"$ref": "../../../protocol/connector-api/connector-api.schema.json#/$defs/seconds"
+		},
+		"bytes": {
+			"description": "Bytes, as text when they are UTF-8, or else in base64.",
+			"properties": {
+				"text": { "description": "The bytes, as the UTF-8 text they encode.", "type": "string" },
+				"base64": {
+					"description": "The bytes, in base64 with padding.",
+					"type": "string",
+					"pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+				}
+			},
+			"oneOf": [{ "required": ["text"] }, { "required": ["base64"] }]
+		},
+		"bytes_or_line": {
+			"description": "Bytes, or a line of text without its line ending.",
+			"properties": {
+				"text": { "$ref": "#/$defs/bytes/properties/text" },
+				"base64": { "$ref": "#/$defs/bytes/properties/base64" },
+				"line": { "description": "The line, without its line ending.", "type": "string" }
+			},
+			"oneOf": [{ "required": ["text"] }, { "required": ["base64"] }, { "required": ["line"] }]
+		},
+		"websocket_data": {
+			"description": "A WebSocket message: a text message, or a binary message in base64.",
+			"properties": {
+				"text": { "description": "A text message.", "type": "string" },
+				"binary": { "description": "A binary message, in base64 with padding.", "$ref": "#/$defs/bytes/properties/base64" }
+			},
+			"oneOf": [{ "required": ["text"] }, { "required": ["binary"] }]
+		},
+		"close_code": { "description": "A WebSocket close code.", "type": "integer", "minimum": 1000, "maximum": 4999 },
+		"stream": { "description": "A spawned backend's output stream, as the connector API's options name it.", "enum": ["stdout", "stderr"] },
+		"sink": {
+			"description": "A sink the adapter supplies for an output stream.",
+			"oneOf": [
+				{ "const": "collect", "description": "A sink that takes everything at once and forwards it as output events." },
+				{ "const": "stall", "description": "A sink that takes nothing until sink_resume names its stream, then collects." }
+			]
+		},
+		"connector_error": {
+			"description": "One of the connector's errors, as the connector API spells it, with its code passed on as the connector carries it.",
+			"$ref": "../../../protocol/connector-api/connector-api.schema.json#/$defs/error",
+			"properties": { "message": { "description": "The error's message, as the language gives it.", "type": "string" } },
+			"required": ["message"],
+			"unevaluatedProperties": false
+		},
+		"language_error": {
+			"description": "An error of the language's own, which isn't one of the connector's.",
+			"type": "object",
+			"properties": {
+				"kind": {
+					"description": "What ended the call.",
+					"oneOf": [
+						{ "const": "cancellation", "description": "A cancellation signal the call took, which cancel fired." },
+						{ "const": "timeout", "description": "The request's own timeout." },
+						{ "const": "other", "description": "Any other error, such as one a WebSocket library reported." }
+					]
+				},
+				"name": { "description": "The language's name for the error's type, such as AbortError or OperationCanceledException.", "type": "string", "minLength": 1 },
+				"message": { "description": "The error's message, as the language gives it.", "type": "string" }
+			},
+			"required": ["kind", "name", "message"],
+			"additionalProperties": false
+		},
+		"refusal": {
+			"description": "Why the adapter didn't make the call a command asked for. Each is a fault of the runner or the adapter, never of the connector.",
+			"type": "object",
+			"properties": {
+				"code": {
+					"description": "The refusal's code.",
+					"oneOf": [
+						{ "const": "unknown_command", "description": "The adapter doesn't know the command's name." },
+						{
+							"const": "invalid_command",
+							"description": "The adapter can't carry out the command as written, such as a line that isn't a command, a name that isn't the right kind of handle, or an option its connector doesn't take."
+						},
+						{ "const": "adapter_error", "description": "The adapter's own code failed, outside the call it made." }
+					]
+				},
+				"message": { "description": "What went wrong, for the runner's report.", "type": "string" }
+			},
+			"required": ["code", "message"],
+			"additionalProperties": false
+		}
+	}
+}

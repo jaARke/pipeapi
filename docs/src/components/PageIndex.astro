@@ -1,0 +1,17 @@
+---
+import { LinkCard } from '@astrojs/starlight/components';
+import { indexCards } from '../sidebar';
+
+// A card for each other entry of the sidebar's group that holds this page, so an overview lists
+// its section's or its document's pages in the sidebar's order, each by its own description.
+const cards = await indexCards(Astro.locals.starlightRoute.sidebar);
+
+// LinkCard renders its title and description as HTML, and labels and descriptions are text.
+function html(text: string): string {
+	return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+---
+
+{cards.map(({ title, href, description }) => (
+	<LinkCard title={html(title)} href={href} description={html(description)} />
+))}

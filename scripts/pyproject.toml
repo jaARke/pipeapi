@@ -1,0 +1,48 @@
+[project]
+name = "pipeapi-scripts"
+version = "0.0.0"
+description = "The scripts pipeapi's checks run over the repository, such as the contract check."
+# The one Python .python-version pins, since nothing here is published.
+requires-python = "==3.14.*"
+dependencies = [
+    # Reads the protocol's registries and OpenAPI documents, and the conformance cases.
+    "pyyaml>=6.0.3",
+]
+
+[dependency-groups]
+dev = [
+    # The nodejs extra locks the Node runtime the wrapper runs pyright's bundled engine on.
+    "pyright[nodejs]>=1.1.414",
+    "ruff>=0.17.1",
+    # Types for PyYAML, which ships none.
+    "types-pyyaml>=6.0.12.20260906",
+]
+
+[tool.uv]
+# The oldest uv that keeps this lock's relative exclude-newer fixed (0.11.8) and can
+# download the CPython .python-version pins (0.13.5), as conformance/pyproject.toml's
+# required-version is, so that Dependabot's uv, which lags the newest, can run. CI's
+# scripts job runs this floor.
+required-version = ">=0.13.5"
+# The cooldown the uv entry in .github/dependabot.yml keeps, which names this setting,
+# so no update proposes a version uv refuses.
+exclude-newer = "7 days"
+
+[tool.ruff]
+# The rules every Python project shares.
+extend = "../ruff.base.toml"
+
+[tool.ruff.lint]
+ignore = [
+    # A script reports what it found on its terminal.
+    "T201",
+    # Each script runs by its path and none imports another, so scripts/ is no package.
+    "INP001",
+]
+
+[tool.pyright]
+# The type checking every Python project shares.
+extends = "../pyright.base.json"
+# The project's environment, whatever Python is first on PATH.
+venvPath = "."
+venv = ".venv"

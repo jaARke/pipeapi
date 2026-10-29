@@ -2,8 +2,10 @@
 import type { ProtocolVersion } from '../../protocol';
 import {
 	anchorOf,
+	checkTablePage,
 	citationOf,
 	connectorApiSection,
+	connectorApiTablePage,
 	type Citation,
 	type ConnectorApiEntry,
 } from './contract';
@@ -17,6 +19,11 @@ interface Props {
 
 const { section, version } = Astro.props;
 const entries = await connectorApiSection(section);
+checkTablePage(
+	Astro.locals.starlightRoute.id,
+	connectorApiTablePage(section),
+	`the connector API's ${section}`
+);
 
 // The columns between the name and the description, in this order, each shown when an entry of
 // the section has it. A cell an entry leaves empty shows `missing`.

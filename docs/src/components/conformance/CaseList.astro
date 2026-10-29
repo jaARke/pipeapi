@@ -1,0 +1,123 @@
+---
+import { conformanceCasesFilePath } from '../../conformance';
+import { anchorOf } from '../protocol/contract';
+import { caseList, type ConformanceCase } from './cases';
+import CodeList from './CodeList.astro';
+import CodeText from './CodeText.astro';
+import Covers from './Covers.astro';
+
+const { areas } = await caseList();
+
+// How the page names each kind of case, and each backend a case talks to.
+const kinds = {
+	server: 'Server case',
+	connector: 'Connector case',
+} as const satisfies Record<ConformanceCase['kind'], string>;
+const backends = {
+	app: 'the reference app',
+	fake: 'the fake server',
+} as const satisfies Record<ConformanceCase['backends'][number], string>;
+
+function talksTo({ backends: reached }: ConformanceCase): string {
+	return reached.length === 0
+		? 'Talks to nothing'
+		: `Talks to ${reached.map((backend) => backends[backend]).join(' and ')}`;
+}
+
+function everyTransport({ once }: ConformanceCase): string {
+	return once ? 'Once, on any transport' : 'On every transport';
+}
+---
+
+<ul>
+	{areas.map(({ name, title, cases }) => (
+		<li>
+			<a href={`#${anchorOf('areas', name)}`}>
+				<CodeText text={title} where={`${conformanceCasesFilePath}'s ${name}`} />
+			</a>{' '}
+			({cases.length})
+		</li>
+	))}
+</ul>
+
+{areas.map(({ name, title, description, cases }) => (
+	<>
+		<h3 id={anchorOf('areas', name)}>
+			<CodeText text={title} where={`${conformanceCasesFilePath}'s ${name}`} />
+		</h3>
+		<p>
+			<CodeText text={description} where={`${conformanceCasesFilePath}'s ${name}`} />
+		</p>
+		<table>
+			<thead>
+				<tr>
+					<th>Case</th>
+					<th>Runs</th>
+					<th>Covers</th>
+					<th>Expectation</th>
+				</tr>
+			</thead>
+			<tbody>
+				{cases.map((conformanceCase) => {
+					const { id, expectation, kind, needs, transports, platforms, vias } = conformanceCase;
+					const where = `${conformanceCasesFilePath}'s ${id}`;
+					return (
+						<tr id={id}>
+							<td>
+								<code>{id}</code>
+								<br />
+								<CodeText text={conformanceCase.title} where={where} />
+							</td>
+							<td>
+								<ul>
+									<li>{kinds[kind]}</li>
+									<li>{talksTo(conformanceCase)}</li>
+									<li>
+										{transports === undefined ? (
+											everyTransport(conformanceCase)
+										) : (
+											<>
+												{conformanceCase.once ? 'Once, on one of ' : 'On '}
+												<CodeList values={transports} />
+											</>
+										)}
+										{platforms !== undefined && (
+											<>
+												{', on '}
+												<CodeList values={platforms} />
+											</>
+										)}
+										{vias !== undefined && (
+											<>
+												{', through '}
+												<CodeList values={vias} />
+											</>
+										)}
+									</li>
+									{needs.length > 0 && (
+										<li>
+											Needs <CodeList values={needs} linksTo="components" />
+										</li>
+									)}
+									{conformanceCase.relies_on !== undefined && (
+										<li>
+											Relies on <CodeList values={conformanceCase.relies_on} />
+										</li>
+									)}
+									{conformanceCase.baseline && <li>In the baseline too</li>}
+									{conformanceCase.slow && <li>Slow</li>}
+								</ul>
+							</td>
+							<td>
+								<Covers covers={conformanceCase.covers} citedBy={id} />
+							</td>
+							<td>
+								<CodeText text={expectation} where={where} />
+							</td>
+						</tr>
+					);
+				})}
+			</tbody>
+		</table>
+	</>
+))}
