@@ -66,7 +66,7 @@ repos:
         files: ^(protocol|conformance)/.+\.schema\.json$
 
   - repo: https://github.com/daveshanley/vacuum
-    rev: 424f9daf7ebfab015a24e24e12bf269f9adeb586 # frozen: v0.33.2
+    rev: fcf8d0c201054e68440e7928093b0bcd912dfe2f # frozen: v0.35.4
     hooks:
       - id: vacuum
         files: ^protocol/v\d+/openapi\.yaml$
