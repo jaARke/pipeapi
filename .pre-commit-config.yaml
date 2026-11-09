@@ -80,7 +80,7 @@ repos:
   # Protocol v1's OpenAPI document against main as the clone last fetched it, which CI fetches. A
   # new protocol version adds a hook of its own, since a hook's args hold its version's mode.
   - repo: https://github.com/oasdiff/oasdiff
-    rev: b762ae6335f6b22204b0f6c633604660464415a2 # frozen: v1.34.1
+    rev: a4ba100f880c7579765c5e63915a99bf1acc6967 # frozen: v1.35.0
     hooks:
       # While protocol/v1/registry.yaml's status is draft, the hook reports breaking changes without
       # failing, and verbose shows a passing hook's report. The release of v1 adds --fail-on ERR to
